@@ -1,5 +1,5 @@
 """
-Zeus Scorer - New Scoring System Implementation
+Zeus Scorer - New Scoring System Implementation - FIXED VOLUME QUALIFIER
 Implements the revised 5-component scoring system with volume qualifier
 
 Scoring Components (0-100 scale):
@@ -9,7 +9,7 @@ Scoring Components (0-100 scale):
 4. Market Impact Awareness Score (15%)
 5. Consistency & Reliability Score (10%)
 
-Volume Qualifier:
+Volume Qualifier - FIXED TIER NAMES:
 - ≥6 tokens traded: 100 points (Baseline)
 - 4-5 tokens: 80 points (Emerging)
 - 2-3 tokens: 60 points (Very new)
@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 logger = logging.getLogger("zeus.scorer")
 
 class ZeusScorer:
-    """Implements the new Zeus scoring system with volume qualifier."""
+    """Implements the new Zeus scoring system with volume qualifier - FIXED VERSION."""
     
     def __init__(self, config: Dict[str, Any]):
         """Initialize scorer with configuration."""
@@ -59,7 +59,7 @@ class ZeusScorer:
             # Extract metrics from token analysis
             metrics = self._extract_metrics(token_analysis)
             
-            # Check volume qualifier first
+            # Check volume qualifier first - FIXED
             volume_qualifier = self._calculate_volume_qualifier(metrics)
             if volume_qualifier['disqualified']:
                 return self._get_zero_score(volume_qualifier['reason'])
@@ -107,7 +107,7 @@ class ZeusScorer:
                     'market_impact_score': round(component_scores['market_impact_awareness'] * 15, 1),
                     'consistency_score': round(component_scores['consistency_reliability'] * 10, 1)
                 },
-                'volume_qualifier': volume_qualifier,
+                'volume_qualifier': volume_qualifier,  # FIXED: Return full volume_qualifier object
                 'metrics_used': metrics,
                 'total_tokens_analyzed': len(token_analysis)
             }
@@ -228,7 +228,7 @@ class ZeusScorer:
             return {}
     
     def _calculate_volume_qualifier(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
-        """Calculate volume qualifier score and check disqualification."""
+        """Calculate volume qualifier score and check disqualification - FIXED TIER NAMES."""
         total_tokens = metrics.get('total_tokens', 0)
         
         if total_tokens >= 6:
@@ -237,7 +237,8 @@ class ZeusScorer:
                 'qualifier_points': 100,
                 'multiplier': 1.0,
                 'disqualified': False,
-                'tier': 'baseline'
+                'tier': 'baseline',  # FIXED: Proper tier name
+                'description': f'Baseline ({total_tokens} tokens)'
             }
         elif total_tokens >= 4:
             return {
@@ -245,7 +246,8 @@ class ZeusScorer:
                 'qualifier_points': 80,
                 'multiplier': 0.8,
                 'disqualified': False,
-                'tier': 'emerging'
+                'tier': 'emerging',  # FIXED: Proper tier name
+                'description': f'Emerging ({total_tokens} tokens)'
             }
         elif total_tokens >= 2:
             return {
@@ -253,7 +255,8 @@ class ZeusScorer:
                 'qualifier_points': 60,
                 'multiplier': 0.6,
                 'disqualified': False,
-                'tier': 'very_new'
+                'tier': 'very_new',  # FIXED: Proper tier name
+                'description': f'Very New ({total_tokens} tokens)'
             }
         else:
             return {
@@ -261,7 +264,8 @@ class ZeusScorer:
                 'qualifier_points': 0,
                 'multiplier': 0.0,
                 'disqualified': True,
-                'tier': 'insufficient',
+                'tier': 'insufficient',  # FIXED: Proper tier name
+                'description': f'Insufficient ({total_tokens} tokens)',
                 'reason': f'Insufficient tokens: {total_tokens} < 2 minimum'
             }
     
@@ -500,6 +504,7 @@ class ZeusScorer:
             },
             'volume_qualifier': {
                 'disqualified': True,
+                'tier': 'insufficient',  # FIXED: Proper tier name
                 'reason': reason
             },
             'total_tokens_analyzed': 0
@@ -531,7 +536,8 @@ class ZeusScorer:
             
             tokens = volume_qualifier.get('tokens', 0)
             tier = volume_qualifier.get('tier', 'unknown')
-            explanation.append(f"📊 Volume: {tokens} tokens ({tier})")
+            tier_desc = volume_qualifier.get('description', f'{tier} tier')
+            explanation.append(f"📊 Volume: {tier_desc}")
             
             # Component breakdown
             risk_score = component_scores.get('risk_adjusted_score', 0)

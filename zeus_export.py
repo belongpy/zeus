@@ -1,12 +1,12 @@
 """
-Zeus Export - CSV Export with Bot Configuration
+Zeus Export - CSV Export with Bot Configuration - FIXED VERSION
 Exports Zeus analysis results to CSV with bot-friendly configuration format
 
-Features:
-- Binary decision columns (Follow Wallet Y/N, Follow Sells Y/N)
-- TP/SL strategy configuration
-- Scoring breakdown
-- Bot-ready configuration format
+FIXES:
+- Component scores extraction bug (columns K-O showing 0's)
+- Removed error columns from successful analyses
+- Fixed volume tier extraction
+- Cleaner CSV output format
 """
 
 import os
@@ -75,13 +75,12 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
         return False
 
 def _get_csv_fieldnames() -> List[str]:
-    """Get CSV column fieldnames in proper order."""
+    """Get CSV column fieldnames in proper order - CLEANED UP VERSION."""
     return [
         # Basic Info
         'rank',
-        'wallet_address',
+        'wallet_address', 
         'analysis_timestamp',
-        'analysis_status',
         
         # Binary Decisions (MOST IMPORTANT)
         'follow_wallet',
@@ -91,59 +90,49 @@ def _get_csv_fieldnames() -> List[str]:
         'copy_entries',
         'copy_exits',
         'tp1_percent',
-        'tp2_percent', 
-        'tp3_percent',
+        'tp2_percent',
+        'tp3_percent', 
         'stop_loss_percent',
-        'position_size_sol',
+        'position_size_range',  # FIXED: Changed from position_size_sol
         
         # Scoring & Metrics
         'composite_score',
-        'risk_adjusted_score',
-        'distribution_score',
-        'discipline_score',
-        'market_impact_score',
-        'consistency_score',
+        'risk_adjusted_score',      # FIXED: Now properly extracted
+        'distribution_score',       # FIXED: Now properly extracted
+        'discipline_score',         # FIXED: Now properly extracted
+        'market_impact_score',      # FIXED: Now properly extracted
+        'consistency_score',        # FIXED: Now properly extracted
         
         # Volume Qualifier
         'unique_tokens_traded',
         'tokens_analyzed',
-        'volume_qualifier_tier',
-        'volume_multiplier',
+        'volume_tier',              # FIXED: Simplified name
         
         # Analysis Details
-        'analysis_days',
-        'conclusive_analysis',
-        'analysis_phase',
         'trader_pattern',
-        
-        # Strategy Details
         'strategy_reasoning',
         'decision_reasoning',
         
-        # Error Handling
-        'error_type',
-        'error_message'
+        # REMOVED: error_type, error_message (only for failed analyses)
     ]
 
 def _create_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """Create CSV row from successful analysis."""
+    """Create CSV row from successful analysis - FIXED VERSION."""
     try:
         # Extract data
         wallet_address = analysis.get('wallet_address', '')
         binary_decisions = analysis.get('binary_decisions', {})
         strategy = analysis.get('strategy_recommendation', {})
-        scoring = analysis.get('scoring_breakdown', {})
+        
+        # FIXED: Proper scoring breakdown extraction
+        scoring_breakdown = analysis.get('scoring_breakdown', {})
         
         # Basic info
         row = {
             'wallet_address': wallet_address,
             'analysis_timestamp': analysis.get('analysis_timestamp', ''),
-            'analysis_status': 'SUCCESS',
-            'analysis_days': analysis.get('analysis_days', 30),
             'unique_tokens_traded': analysis.get('unique_tokens_traded', 0),
-            'tokens_analyzed': analysis.get('tokens_analyzed', 0),
-            'conclusive_analysis': 'YES' if analysis.get('conclusive_analysis', True) else 'NO',
-            'analysis_phase': analysis.get('analysis_phase', 'unknown')
+            'tokens_analyzed': analysis.get('tokens_analyzed', 0)
         }
         
         # Binary decisions
@@ -160,24 +149,40 @@ def _create_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
             'tp2_percent': strategy.get('tp2_percent', 0),
             'tp3_percent': strategy.get('tp3_percent', 0),
             'stop_loss_percent': strategy.get('stop_loss_percent', -35),
-            'position_size_sol': strategy.get('position_size_sol', '0')
+            'position_size_range': strategy.get('position_size_sol', '1-5')  # FIXED: Use correct field name
         })
         
-        # Scoring
+        # FIXED: Proper composite score extraction
         row.update({
-            'composite_score': analysis.get('composite_score', 0),
-            'risk_adjusted_score': scoring.get('risk_adjusted_score', 0),
-            'distribution_score': scoring.get('distribution_score', 0),
-            'discipline_score': scoring.get('discipline_score', 0),
-            'market_impact_score': scoring.get('market_impact_score', 0),
-            'consistency_score': scoring.get('consistency_score', 0)
+            'composite_score': analysis.get('composite_score', 0)
         })
         
-        # Volume qualifier
-        volume_qualifier = scoring.get('volume_qualifier', {})
+        # FIXED: Proper component scores extraction from nested structure
+        component_scores = scoring_breakdown.get('component_scores', {})
         row.update({
-            'volume_qualifier_tier': volume_qualifier.get('tier', 'unknown'),
-            'volume_multiplier': volume_qualifier.get('multiplier', 1.0)
+            'risk_adjusted_score': component_scores.get('risk_adjusted_score', 0),
+            'distribution_score': component_scores.get('distribution_score', 0),
+            'discipline_score': component_scores.get('discipline_score', 0),
+            'market_impact_score': component_scores.get('market_impact_score', 0),
+            'consistency_score': component_scores.get('consistency_score', 0)
+        })
+        
+        # FIXED: Volume qualifier tier extraction
+        volume_qualifier = scoring_breakdown.get('volume_qualifier', {})
+        volume_tier = volume_qualifier.get('tier', 'unknown')
+        
+        # Convert tier to readable format
+        if volume_tier == 'baseline':
+            tier_display = 'Baseline (6+ tokens)'
+        elif volume_tier == 'emerging':
+            tier_display = 'Emerging (4-5 tokens)'
+        elif volume_tier == 'very_new':
+            tier_display = 'Very New (2-3 tokens)'
+        else:
+            tier_display = f'{volume_tier} ({analysis.get("unique_tokens_traded", 0)} tokens)'
+            
+        row.update({
+            'volume_tier': tier_display
         })
         
         # Strategy details
@@ -187,54 +192,69 @@ def _create_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
             'trader_pattern': _identify_trader_pattern_from_analysis(analysis)
         })
         
-        # No errors
-        row.update({
-            'error_type': '',
-            'error_message': ''
-        })
-        
         return row
         
     except Exception as e:
         logger.error(f"Error creating analysis row: {str(e)}")
-        return _create_failed_row({
+        # Return minimal row instead of failing completely
+        return {
             'wallet_address': analysis.get('wallet_address', ''),
-            'error': f'Row creation error: {str(e)}',
-            'error_type': 'ROW_CREATION_ERROR'
-        })
+            'analysis_timestamp': datetime.now().isoformat(),
+            'follow_wallet': 'NO',
+            'follow_sells': 'NO',
+            'copy_entries': 'NO',
+            'copy_exits': 'NO',
+            'tp1_percent': 0,
+            'tp2_percent': 0,
+            'tp3_percent': 0,
+            'stop_loss_percent': -35,
+            'position_size_range': '1-5',
+            'composite_score': 0,
+            'risk_adjusted_score': 0,
+            'distribution_score': 0,
+            'discipline_score': 0,
+            'market_impact_score': 0,
+            'consistency_score': 0,
+            'unique_tokens_traded': 0,
+            'tokens_analyzed': 0,
+            'volume_tier': 'Error',
+            'trader_pattern': 'error',
+            'strategy_reasoning': f'Row creation error: {str(e)}',
+            'decision_reasoning': 'Error in analysis'
+        }
 
 def _create_failed_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """Create CSV row for failed analysis."""
+    """Create CSV row for failed analysis - STREAMLINED VERSION."""
     wallet_address = analysis.get('wallet_address', '')
     error_type = analysis.get('error_type', 'UNKNOWN_ERROR')
     error_message = analysis.get('error', 'Unknown error')
     
-    # Create minimal row with error info
+    # Create row with error info in reasoning fields
     row = {
         'wallet_address': wallet_address,
         'analysis_timestamp': datetime.now().isoformat(),
-        'analysis_status': 'FAILED',
-        'error_type': error_type,
-        'error_message': error_message
+        'follow_wallet': 'NO',
+        'follow_sells': 'NO',
+        'copy_entries': 'NO',
+        'copy_exits': 'NO',
+        'tp1_percent': 0,
+        'tp2_percent': 0,
+        'tp3_percent': 0,
+        'stop_loss_percent': -35,
+        'position_size_range': '0',
+        'composite_score': 0,
+        'risk_adjusted_score': 0,
+        'distribution_score': 0,
+        'discipline_score': 0,
+        'market_impact_score': 0,
+        'consistency_score': 0,
+        'unique_tokens_traded': analysis.get('unique_tokens_found', 0),
+        'tokens_analyzed': 0,
+        'volume_tier': f'Failed: {error_type}',
+        'trader_pattern': 'failed',
+        'strategy_reasoning': f'Analysis failed: {error_message}',
+        'decision_reasoning': f'Failed: {error_type}'
     }
-    
-    # Fill other fields with defaults
-    fieldnames = _get_csv_fieldnames()
-    for field in fieldnames:
-        if field not in row:
-            if field in ['follow_wallet', 'follow_sells', 'copy_entries', 'copy_exits', 'conclusive_analysis']:
-                row[field] = 'NO'
-            elif field in ['tp1_percent', 'tp2_percent', 'tp3_percent', 'composite_score', 
-                          'risk_adjusted_score', 'distribution_score', 'discipline_score',
-                          'market_impact_score', 'consistency_score', 'unique_tokens_traded',
-                          'tokens_analyzed', 'analysis_days', 'volume_multiplier']:
-                row[field] = 0
-            elif field == 'stop_loss_percent':
-                row[field] = -35
-            elif field == 'position_size_sol':
-                row[field] = '0'
-            else:
-                row[field] = ''
     
     return row
 
@@ -274,7 +294,7 @@ def _identify_trader_pattern_from_analysis(analysis: Dict[str, Any]) -> str:
         elif avg_hold_time > 24:  # > 1 day
             return 'position_trader'
         elif roi_std < 50 and avg_roi > 20:  # Consistent profits
-            return 'consistent_scalper'
+            return 'scalper'
         elif roi_std > 80:  # High variance
             return 'volatile_trader'
         else:
@@ -334,6 +354,13 @@ def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
                 f.write(f"({follow_wallet_count/len(successful_analyses)*100:.1f}%)\n")
                 f.write(f"Follow Sells (YES): {follow_sells_count}/{len(successful_analyses)} ")
                 f.write(f"({follow_sells_count/len(successful_analyses)*100:.1f}%)\n\n")
+                
+                # Show Follow Wallet YES but Follow Sells NO cases
+                follow_wallet_only = sum(1 for a in successful_analyses 
+                                       if a.get('binary_decisions', {}).get('follow_wallet', False) and 
+                                       not a.get('binary_decisions', {}).get('follow_sells', False))
+                f.write(f"Follow Wallet Only (YES/NO): {follow_wallet_only}/{len(successful_analyses)} ")
+                f.write(f"({follow_wallet_only/len(successful_analyses)*100:.1f}%)\n\n")
             
             # Top performers
             if successful_analyses:
@@ -380,21 +407,6 @@ def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
                     wallet = analysis.get('wallet_address', 'Unknown')
                     error = analysis.get('error', 'Unknown error')
                     f.write(f"• {wallet[:8]}...{wallet[-4:]}: {error}\n")
-            
-            # Strategy distribution
-            if successful_analyses:
-                f.write(f"\n\n📋 STRATEGY DISTRIBUTION\n")
-                f.write("-" * 40 + "\n")
-                
-                # Count by trader pattern
-                patterns = {}
-                for analysis in successful_analyses:
-                    pattern = _identify_trader_pattern_from_analysis(analysis)
-                    patterns[pattern] = patterns.get(pattern, 0) + 1
-                
-                for pattern, count in sorted(patterns.items(), key=lambda x: x[1], reverse=True):
-                    percentage = count / len(successful_analyses) * 100
-                    f.write(f"{pattern}: {count} wallets ({percentage:.1f}%)\n")
             
             f.write(f"\n" + "=" * 80 + "\n")
             f.write("END OF ZEUS ANALYSIS SUMMARY\n")
