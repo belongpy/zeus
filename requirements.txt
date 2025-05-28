@@ -1,0 +1,56 @@
+# Zeus Wallet Analysis System - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core dependencies
+requests>=2.28.0
+numpy>=1.21.0
+pandas>=1.5.0
+
+# Base58 encoding for Solana addresses
+base58>=2.1.0
+
+# JSON handling and configuration
+jsonschema>=4.0.0
+
+# Date and time utilities
+python-dateutil>=2.8.0
+
+# HTTP client enhancements
+urllib3>=1.26.0
+certifi>=2022.0.0
+
+# Logging and performance
+psutil>=5.9.0
+
+# Optional: Enhanced data analysis (recommended)
+scipy>=1.9.0
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# Optional: API client enhancements
+aiohttp>=3.8.0
+asyncio-throttle>=1.0.0
+
+# Development and testing (optional)
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=22.0.0
+flake8>=5.0.0
+
+# Documentation (optional)  
+sphinx>=5.0.0
+sphinx-rtd-theme>=1.0.0
+
+# Solana-specific dependencies
+solana>=0.30.0
+solders>=0.18.0
+
+# API integrations (install these separately based on your needs)
+# For Birdeye API:
+# birdeye-sdk>=1.0.0
+
+# For Helius API:
+# helius-sdk>=1.0.0
+
+# Note: Some API SDKs may need to be installed manually or from GitHub
+# Check the respective API documentation for installation instructions

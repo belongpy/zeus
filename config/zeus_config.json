@@ -1,0 +1,107 @@
+{
+  "_comment": "Zeus Wallet Analysis System - Default Configuration",
+  "_version": "1.0",
+  "_description": {
+    "api_keys": "API keys for external services - Cielo required, others optional",
+    "analysis": "Analysis parameters and binary decision thresholds",
+    "scoring": "5-component scoring system weights and thresholds",
+    "output": "Output format and export settings",
+    "logging": "Logging configuration and file settings",
+    "performance": "Performance tuning and rate limiting",
+    "features": "Feature toggles for optional functionality"
+  },
+  
+  "api_keys": {
+    "birdeye_api_key": "",
+    "cielo_api_key": "",
+    "helius_api_key": "",
+    "solana_rpc_url": "https://api.mainnet-beta.solana.com"
+  },
+  
+  "analysis": {
+    "days_to_analyze": 30,
+    "min_unique_tokens": 6,
+    "initial_token_sample": 5,
+    "max_token_sample": 10,
+    "composite_score_threshold": 65.0,
+    "exit_quality_threshold": 70.0,
+    "enable_smart_sampling": true,
+    "timeout_seconds": 300
+  },
+  
+  "scoring": {
+    "component_weights": {
+      "risk_adjusted_performance": 0.30,
+      "distribution_quality": 0.25,
+      "trading_discipline": 0.20,
+      "market_impact_awareness": 0.15,
+      "consistency_reliability": 0.10
+    },
+    
+    "volume_qualifier": {
+      "baseline_tokens": 6,
+      "emerging_tokens": 4,
+      "new_tokens": 2,
+      "baseline_multiplier": 1.0,
+      "emerging_multiplier": 0.8,
+      "new_multiplier": 0.6
+    },
+    
+    "risk_adjusted": {
+      "roi_thresholds": [25, 50, 100],
+      "roi_scores": [0.4, 0.6, 0.8, 1.0],
+      "std_thresholds": [50, 100, 200],
+      "std_scores": [1.0, 0.9, 0.8, 0.7]
+    },
+    
+    "distribution": {
+      "moonshot_threshold": 400,
+      "big_win_min": 100,
+      "big_win_max": 400,
+      "heavy_loss_threshold": -50,
+      "moonshot_rate_thresholds": [5, 10, 15],
+      "big_win_rate_thresholds": [10, 20, 30]
+    },
+    
+    "discipline": {
+      "quick_cut_hours": 4,
+      "slow_cut_days": 7,
+      "same_block_seconds": 60,
+      "flipper_rate_threshold": 20
+    }
+  },
+  
+  "output": {
+    "default_csv": "zeus_analysis.csv",
+    "default_summary": "zeus_summary.txt", 
+    "default_bot_config": "zeus_bot_config.json",
+    "include_failed_analyses": true,
+    "sort_by_score": true,
+    "export_formats": ["csv", "summary"],
+    "timestamp_format": "%Y%m%d_%H%M%S"
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "file": "zeus.log",
+    "max_file_size_mb": 10,
+    "backup_count": 3,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  
+  "performance": {
+    "max_concurrent_analyses": 3,
+    "api_timeout_seconds": 30,
+    "retry_attempts": 3,
+    "retry_delay_seconds": 1,
+    "rate_limit_delay_ms": 100
+  },
+  
+  "features": {
+    "enable_enhanced_transactions": true,
+    "enable_price_analysis": true,
+    "enable_market_cap_analysis": true,
+    "enable_bot_detection": true,
+    "enable_pattern_recognition": true
+  }
+}
