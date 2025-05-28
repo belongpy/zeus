@@ -80,20 +80,17 @@ def _get_csv_fieldnames() -> List[str]:
         # Basic Info
         'rank',
         'wallet_address', 
-        'analysis_timestamp',
         
         # Binary Decisions (MOST IMPORTANT)
         'follow_wallet',
         'follow_sells',
         
         # Bot Configuration
-        'copy_entries',
-        'copy_exits',
         'tp1_percent',
         'tp2_percent',
         'tp3_percent', 
         'stop_loss_percent',
-        'position_size_range',  # FIXED: Changed from position_size_sol
+        'position_size_range',  # FIXED: Format to avoid Excel date conversion
         
         # Scoring & Metrics
         'composite_score',
@@ -113,7 +110,7 @@ def _get_csv_fieldnames() -> List[str]:
         'strategy_reasoning',
         'decision_reasoning',
         
-        # REMOVED: error_type, error_message (only for failed analyses)
+        # REMOVED: analysis_timestamp, copy_entries, copy_exits (redundant)
     ]
 
 def _create_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
@@ -127,29 +124,33 @@ def _create_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
         # FIXED: Proper scoring breakdown extraction
         scoring_breakdown = analysis.get('scoring_breakdown', {})
         
-        # Basic info
+        # Basic info - REMOVED analysis_timestamp
         row = {
             'wallet_address': wallet_address,
-            'analysis_timestamp': analysis.get('analysis_timestamp', ''),
             'unique_tokens_traded': analysis.get('unique_tokens_traded', 0),
             'tokens_analyzed': analysis.get('tokens_analyzed', 0)
         }
         
-        # Binary decisions
+        # Binary decisions - REMOVED redundant copy_entries/copy_exits
         row.update({
             'follow_wallet': 'YES' if binary_decisions.get('follow_wallet', False) else 'NO',
             'follow_sells': 'YES' if binary_decisions.get('follow_sells', False) else 'NO'
         })
         
-        # Bot configuration
+        # Bot configuration - FIXED position_size format to avoid Excel date conversion
+        position_size_raw = strategy.get('position_size_sol', '1-5')
+        # Format to avoid Excel converting to dates (1-5 becomes Jan-5)
+        if '-' in str(position_size_raw) and str(position_size_raw) != '0':
+            position_size_formatted = f"Size {position_size_raw}"
+        else:
+            position_size_formatted = str(position_size_raw)
+            
         row.update({
-            'copy_entries': 'YES' if strategy.get('copy_entries', False) else 'NO',
-            'copy_exits': 'YES' if strategy.get('copy_exits', False) else 'NO',
             'tp1_percent': strategy.get('tp1_percent', 0),
             'tp2_percent': strategy.get('tp2_percent', 0),
             'tp3_percent': strategy.get('tp3_percent', 0),
             'stop_loss_percent': strategy.get('stop_loss_percent', -35),
-            'position_size_range': strategy.get('position_size_sol', '1-5')  # FIXED: Use correct field name
+            'position_size_range': position_size_formatted  # FIXED: Avoid Excel date conversion
         })
         
         # FIXED: Proper composite score extraction
@@ -196,19 +197,16 @@ def _create_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Error creating analysis row: {str(e)}")
-        # Return minimal row instead of failing completely
+        # Return minimal row instead of failing completely - REMOVED redundant fields
         return {
             'wallet_address': analysis.get('wallet_address', ''),
-            'analysis_timestamp': datetime.now().isoformat(),
             'follow_wallet': 'NO',
             'follow_sells': 'NO',
-            'copy_entries': 'NO',
-            'copy_exits': 'NO',
             'tp1_percent': 0,
             'tp2_percent': 0,
             'tp3_percent': 0,
             'stop_loss_percent': -35,
-            'position_size_range': '1-5',
+            'position_size_range': 'Size 1-5',
             'composite_score': 0,
             'risk_adjusted_score': 0,
             'distribution_score': 0,
@@ -229,19 +227,16 @@ def _create_failed_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
     error_type = analysis.get('error_type', 'UNKNOWN_ERROR')
     error_message = analysis.get('error', 'Unknown error')
     
-    # Create row with error info in reasoning fields
+    # Create row with error info in reasoning fields - REMOVED redundant fields
     row = {
         'wallet_address': wallet_address,
-        'analysis_timestamp': datetime.now().isoformat(),
         'follow_wallet': 'NO',
         'follow_sells': 'NO',
-        'copy_entries': 'NO',
-        'copy_exits': 'NO',
         'tp1_percent': 0,
         'tp2_percent': 0,
         'tp3_percent': 0,
         'stop_loss_percent': -35,
-        'position_size_range': '0',
+        'position_size_range': 'Size 0',  # FIXED: Format to avoid Excel date conversion
         'composite_score': 0,
         'risk_adjusted_score': 0,
         'distribution_score': 0,

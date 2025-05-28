@@ -6,7 +6,8 @@ FIXES:
 - Decision logic for Follow Wallet (composite score ≥65 should = YES)
 - Independent Follow Wallet vs Follow Sells decisions
 - Real data integration with proper field mapping
-- Cleaner analysis flow
+- Added missing _make_binary_decisions method
+- Enhanced exit analysis integration
 """
 
 import logging
@@ -199,6 +200,386 @@ class ZeusAnalyzer:
             'failed': failed_analyses
         }
     
+    def _make_binary_decisions(self, scoring_result: Dict[str, Any], 
+                             analysis_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Make binary decisions based on scoring and enhanced analysis."""
+        try:
+            composite_score = scoring_result.get('composite_score', 0)
+            token_analysis = analysis_result.get('token_analysis', [])
+            
+            logger.info(f"Making binary decisions for score: {composite_score:.1f}")
+            
+            # Decision 1: Follow Wallet based on composite score and basic checks
+            follow_wallet = self._decide_follow_wallet(composite_score, scoring_result, token_analysis)
+            
+            # Decision 2: Follow Sells (only if following wallet) based on enhanced exit analysis
+            follow_sells = False
+            if follow_wallet:
+                follow_sells = self._decide_follow_sells(scoring_result, token_analysis)
+            
+            logger.info(f"Binary decisions: Follow Wallet={follow_wallet}, Follow Sells={follow_sells}")
+            
+            return {
+                'follow_wallet': follow_wallet,
+                'follow_sells': follow_sells,
+                'composite_score': composite_score,
+                'decision_reasoning': self._get_decision_reasoning(
+                    follow_wallet, follow_sells, composite_score, scoring_result
+                )
+            }
+            
+        except Exception as e:
+            logger.error(f"Error making binary decisions: {str(e)}")
+            return {
+                'follow_wallet': False,
+                'follow_sells': False,
+                'composite_score': 0,
+                'decision_reasoning': f"Error in decision making: {str(e)}"
+            }
+    
+    def _decide_follow_wallet(self, composite_score: float, scoring_result: Dict[str, Any], 
+                            token_analysis: List[Dict[str, Any]]) -> bool:
+        """
+        Decide whether to follow wallet based on composite score and volume.
+        
+        PRIMARY CRITERION: Score threshold ≥65
+        """
+        # PRIMARY CRITERION: Score threshold
+        if composite_score < self.composite_score_threshold:
+            logger.info(f"Follow wallet: NO - Score {composite_score:.1f} < {self.composite_score_threshold}")
+            return False
+        
+        # Check volume qualifier (should already be passed if we got this far)
+        volume_qualifier = scoring_result.get('volume_qualifier', {})
+        if volume_qualifier.get('disqualified', False):
+            logger.info(f"Follow wallet: NO - Volume disqualified: {volume_qualifier.get('reason', 'Unknown')}")
+            return False
+        
+        # SECONDARY CHECKS: Only minor penalties for extreme cases
+        total_tokens = len(token_analysis)
+        if total_tokens > 0:
+            # Check for excessive flipper behavior (very strict threshold)
+            very_short_holds = sum(1 for token in token_analysis 
+                                 if token.get('hold_time_hours', 24) < 0.1)  # < 6 minutes
+            flipper_rate = very_short_holds / total_tokens * 100
+            
+            # Only disqualify if >50% are ultra-short holds (extreme flipper behavior)
+            if flipper_rate > 50:
+                logger.info(f"Follow wallet: NO - Extreme flipper behavior: {flipper_rate:.1f}% ultra-short holds")
+                return False
+        
+        logger.info(f"Follow wallet: YES - Score {composite_score:.1f} ≥ {self.composite_score_threshold}, passed all checks")
+        return True
+    
+    def _decide_follow_sells(self, scoring_result: Dict[str, Any], 
+                           token_analysis: List[Dict[str, Any]]) -> bool:
+        """
+        ENHANCED EXIT ANALYSIS: Deep dive into 5-10 completed trades.
+        This determines if we should copy their exits or use custom TP/SL.
+        
+        This is INDEPENDENT of Follow Wallet decision - can be NO even if Follow Wallet is YES
+        """
+        try:
+            logger.info("🔍 ENHANCED EXIT ANALYSIS - Studying their sell behavior in detail...")
+            
+            # Get enhanced exit analysis
+            exit_analysis = self._enhanced_exit_analysis(token_analysis)
+            
+            if not exit_analysis.get('sufficient_data'):
+                logger.info(f"Follow sells: NO - {exit_analysis.get('reason', 'Insufficient data')}")
+                return False
+            
+            exit_quality_score = exit_analysis.get('exit_quality_score', 0)
+            logger.info(f"Exit Quality Score: {exit_quality_score:.1f}/100")
+            
+            # Follow Sells decision based on comprehensive exit analysis
+            if exit_quality_score >= 70:
+                logger.info(f"Follow sells: YES - Excellent exit discipline (Score: {exit_quality_score:.1f})")
+                return True
+            else:
+                logger.info(f"Follow sells: NO - Poor exit quality (Score: {exit_quality_score:.1f} < 70)")
+                return False
+            
+        except Exception as e:
+            logger.error(f"Error in enhanced exit analysis: {str(e)}")
+            return False
+    
+    def _enhanced_exit_analysis(self, token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        DEEP DIVE: Study exit behavior on 5-10 completed trades.
+        This is the CRITICAL analysis that determines Follow Sells decision.
+        
+        Args:
+            token_analysis: List of token trades to analyze
+            
+        Returns:
+            Dict with detailed exit analysis and recommendation
+        """
+        try:
+            # Filter to completed trades only (they actually exited)
+            completed_trades = [t for t in token_analysis if t.get('trade_status') == 'completed']
+            
+            if len(completed_trades) < 3:
+                return {
+                    'sufficient_data': False,
+                    'reason': f'Insufficient completed trades: {len(completed_trades)} < 3',
+                    'exit_quality_score': 0
+                }
+            
+            # Study 5-10 most recent completed trades
+            study_trades = sorted(completed_trades, key=lambda x: x.get('last_timestamp', 0), reverse=True)[:10]
+            
+            logger.info(f"📊 Deep studying {len(study_trades)} completed trades for exit patterns...")
+            
+            # 1. EXIT TIMING ANALYSIS
+            timing_metrics = self._analyze_exit_timing(study_trades)
+            
+            # 2. PROFIT CAPTURE ANALYSIS  
+            profit_metrics = self._analyze_profit_capture(study_trades)
+            
+            # 3. LOSS MANAGEMENT ANALYSIS
+            loss_metrics = self._analyze_loss_management(study_trades)
+            
+            # 4. EXIT DISCIPLINE ANALYSIS
+            discipline_metrics = self._analyze_exit_discipline(study_trades)
+            
+            # Calculate overall exit quality score (weighted average)
+            exit_quality_score = (
+                timing_metrics.get('timing_score', 0) * 0.25 +
+                profit_metrics.get('profit_capture_score', 0) * 0.35 +
+                loss_metrics.get('loss_management_score', 0) * 0.25 +
+                discipline_metrics.get('discipline_score', 0) * 0.15
+            )
+            
+            logger.info(f"Exit Analysis Breakdown:")
+            logger.info(f"  - Timing Score: {timing_metrics.get('timing_score', 0):.1f}/100")
+            logger.info(f"  - Profit Capture: {profit_metrics.get('profit_capture_score', 0):.1f}/100")
+            logger.info(f"  - Loss Management: {loss_metrics.get('loss_management_score', 0):.1f}/100")
+            logger.info(f"  - Exit Discipline: {discipline_metrics.get('discipline_score', 0):.1f}/100")
+            logger.info(f"  - OVERALL: {exit_quality_score:.1f}/100")
+            
+            return {
+                'sufficient_data': True,
+                'exit_quality_score': round(exit_quality_score, 1),
+                'trades_analyzed': len(study_trades),
+                'timing_metrics': timing_metrics,
+                'profit_metrics': profit_metrics,
+                'loss_metrics': loss_metrics,
+                'discipline_metrics': discipline_metrics
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in enhanced exit analysis: {str(e)}")
+            return {
+                'sufficient_data': False,
+                'reason': f'Analysis error: {str(e)}',
+                'exit_quality_score': 0
+            }
+    
+    def _analyze_exit_timing(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze if they exit too early, too late, or at optimal times."""
+        try:
+            hold_times = [t.get('hold_time_hours', 0) for t in trades]
+            rois = [t.get('roi_percent', 0) for t in trades]
+            
+            # Categorize exits by timing
+            quick_exits = sum(1 for h in hold_times if h < 1)  # < 1 hour
+            medium_exits = sum(1 for h in hold_times if 1 <= h <= 24)  # 1-24 hours  
+            long_exits = sum(1 for h in hold_times if h > 24)  # > 1 day
+            
+            # Analyze performance by timing
+            quick_trades = [t for t in trades if t.get('hold_time_hours', 0) < 1]
+            quick_avg_roi = sum(t.get('roi_percent', 0) for t in quick_trades) / len(quick_trades) if quick_trades else 0
+            
+            medium_trades = [t for t in trades if 1 <= t.get('hold_time_hours', 0) <= 24]
+            medium_avg_roi = sum(t.get('roi_percent', 0) for t in medium_trades) / len(medium_trades) if medium_trades else 0
+            
+            # Score timing (favor medium holds, penalize too quick or too long)
+            timing_score = 50  # Base score
+            if medium_exits > len(trades) * 0.4:  # Good - mostly medium timing
+                timing_score += 30
+            if quick_exits < len(trades) * 0.3:  # Good - not too many quick exits
+                timing_score += 20
+            if long_exits < len(trades) * 0.2:  # Good - not holding too long
+                timing_score += 10
+            
+            # Bonus for performance
+            if medium_avg_roi > quick_avg_roi:  # Medium timing performs better
+                timing_score += 10
+                
+            return {
+                'timing_score': min(100, max(0, timing_score)),
+                'avg_hold_time': sum(hold_times) / len(hold_times),
+                'quick_exits_pct': quick_exits / len(trades) * 100,
+                'medium_exits_pct': medium_exits / len(trades) * 100,
+                'long_exits_pct': long_exits / len(trades) * 100,
+                'quick_avg_roi': quick_avg_roi,
+                'medium_avg_roi': medium_avg_roi
+            }
+            
+        except Exception as e:
+            logger.error(f"Exit timing analysis error: {str(e)}")
+            return {'timing_score': 0}
+    
+    def _analyze_profit_capture(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze how well they capture profits on winning trades."""
+        try:
+            winning_trades = [t for t in trades if t.get('roi_percent', 0) > 0]
+            
+            if not winning_trades:
+                return {'profit_capture_score': 0}
+            
+            rois = [t.get('roi_percent', 0) for t in winning_trades]
+            
+            # Categorize wins by size
+            small_wins = sum(1 for roi in rois if 0 < roi <= 50)  # 0-50%
+            medium_wins = sum(1 for roi in rois if 50 < roi <= 200)  # 50-200% 
+            big_wins = sum(1 for roi in rois if 200 < roi <= 500)  # 200-500%
+            huge_wins = sum(1 for roi in rois if roi > 500)  # 500%+
+            
+            # Score profit capture ability
+            profit_score = 0
+            win_rate = len(winning_trades) / len(trades) * 100
+            
+            # Base score from win rate
+            if win_rate > 70:
+                profit_score += 40
+            elif win_rate > 50:
+                profit_score += 30
+            elif win_rate > 30:
+                profit_score += 20
+            
+            # Bonus for big wins
+            if huge_wins > 0:
+                profit_score += 30  # Excellent - captures huge wins
+            elif big_wins > 0:
+                profit_score += 20  # Good - captures big wins
+            elif medium_wins > len(winning_trades) * 0.5:
+                profit_score += 10  # Decent - mostly medium wins
+                
+            return {
+                'profit_capture_score': min(100, profit_score),
+                'win_rate': win_rate,
+                'avg_win_roi': sum(rois) / len(rois),
+                'max_win_roi': max(rois),
+                'big_wins_count': big_wins + huge_wins,
+                'big_wins_pct': (big_wins + huge_wins) / len(winning_trades) * 100
+            }
+            
+        except Exception as e:
+            logger.error(f"Profit capture analysis error: {str(e)}")
+            return {'profit_capture_score': 0}
+    
+    def _analyze_loss_management(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze how they handle losing trades."""
+        try:
+            losing_trades = [t for t in trades if t.get('roi_percent', 0) < 0]
+            
+            if not losing_trades:
+                return {'loss_management_score': 100}  # No losses = perfect
+            
+            loss_rois = [abs(t.get('roi_percent', 0)) for t in losing_trades]
+            loss_times = [t.get('hold_time_hours', 0) for t in losing_trades]
+            
+            # Categorize losses by severity
+            small_losses = sum(1 for roi in loss_rois if roi <= 25)  # <= 25% loss
+            medium_losses = sum(1 for roi in loss_rois if 25 < roi <= 50)  # 25-50% loss
+            heavy_losses = sum(1 for roi in loss_rois if roi > 50)  # > 50% loss
+            
+            # Analyze cutting speed
+            quick_cuts = sum(1 for t in losing_trades if t.get('hold_time_hours', 0) < 4)  # Cut within 4 hours
+            slow_cuts = sum(1 for t in losing_trades if t.get('hold_time_hours', 0) > 24)  # Held > 1 day
+            
+            # Score loss management
+            loss_score = 80  # Start with good base
+            
+            # Penalties
+            if heavy_losses > len(losing_trades) * 0.2:  # More than 20% heavy losses
+                loss_score -= 30
+            if slow_cuts > len(losing_trades) * 0.4:  # More than 40% slow to cut
+                loss_score -= 25
+            if sum(loss_rois) / len(loss_rois) > 40:  # Average loss > 40%
+                loss_score -= 15
+                
+            # Bonuses
+            if quick_cuts > len(losing_trades) * 0.6:  # More than 60% quick cuts
+                loss_score += 20
+                
+            return {
+                'loss_management_score': max(0, min(100, loss_score)),
+                'loss_rate': len(losing_trades) / len(trades) * 100,
+                'avg_loss_roi': -sum(loss_rois) / len(loss_rois),
+                'heavy_losses_pct': heavy_losses / len(losing_trades) * 100,
+                'quick_cuts_pct': quick_cuts / len(losing_trades) * 100
+            }
+            
+        except Exception as e:
+            logger.error(f"Loss management analysis error: {str(e)}")
+            return {'loss_management_score': 50}
+    
+    def _analyze_exit_discipline(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze overall exit discipline and consistency."""
+        try:
+            # Check for problematic behaviors
+            dump_trades = sum(1 for t in trades if t.get('hold_time_hours', 0) < 0.1)  # < 6 minutes
+            panic_trades = sum(1 for t in trades 
+                              if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 0) < 1)
+            
+            # Calculate discipline score
+            discipline_score = 100
+            
+            # Major penalties
+            if dump_trades > len(trades) * 0.3:  # More than 30% dumps
+                discipline_score -= 50
+            elif dump_trades > len(trades) * 0.1:  # More than 10% dumps
+                discipline_score -= 25
+                
+            if panic_trades > len(trades) * 0.2:  # More than 20% panic sells
+                discipline_score -= 30
+            
+            # Check consistency in ROI distribution
+            rois = [t.get('roi_percent', 0) for t in trades]
+            roi_std = (sum((roi - sum(rois)/len(rois)) ** 2 for roi in rois) / len(rois)) ** 0.5
+            
+            if roi_std < 100:  # Consistent results
+                discipline_score += 10
+                
+            return {
+                'discipline_score': max(0, min(100, discipline_score)),
+                'dump_rate': dump_trades / len(trades) * 100,
+                'panic_rate': panic_trades / len(trades) * 100,
+                'roi_consistency': roi_std
+            }
+            
+        except Exception as e:
+            logger.error(f"Exit discipline analysis error: {str(e)}")
+            return {'discipline_score': 50}
+    
+    def _get_decision_reasoning(self, follow_wallet: bool, follow_sells: bool, 
+                              composite_score: float, scoring_result: Dict[str, Any]) -> str:
+        """Generate detailed reasoning for binary decisions based on enhanced analysis."""
+        reasoning_parts = []
+        
+        # Follow wallet reasoning
+        if follow_wallet:
+            reasoning_parts.append(f"Follow Wallet: YES (Score: {composite_score:.1f} ≥ {self.composite_score_threshold})")
+        else:
+            if composite_score < self.composite_score_threshold:
+                reasoning_parts.append(f"Follow Wallet: NO (Score: {composite_score:.1f} < {self.composite_score_threshold})")
+            else:
+                reasoning_parts.append("Follow Wallet: NO (Failed volume or bot behavior checks)")
+        
+        # Enhanced follow sells reasoning with exit analysis details
+        if follow_wallet:
+            if follow_sells:
+                reasoning_parts.append("Follow Sells: YES (Passed enhanced exit analysis - good discipline)")
+            else:
+                reasoning_parts.append("Follow Sells: NO (Failed enhanced exit analysis - poor exit quality)")
+        else:
+            reasoning_parts.append("Follow Sells: NO (Not following wallet)")
+        
+        return " | ".join(reasoning_parts)
+    
     def _get_wallet_trading_data(self, wallet_address: str) -> Dict[str, Any]:
         """Get wallet trading data from available APIs."""
         try:
@@ -232,11 +613,6 @@ class ZeusAnalyzer:
                 'error': str(e)
             }
     
-    def _process_wallet_data(self, wallet_address: str, wallet_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Process wallet data into token analysis format.
-        Handles both real Cielo Finance data and mock data.
-        """
     def _process_wallet_data(self, wallet_address: str, wallet_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Process wallet data into token analysis format.
@@ -429,6 +805,194 @@ class ZeusAnalyzer:
             logger.error(f"Error creating token analysis: {str(e)}")
             return []
     
+    def _generate_strategy_recommendation(self, binary_decisions: Dict[str, Any], 
+                                        scoring_result: Dict[str, Any],
+                                        analysis_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate TP/SL strategy recommendation based on enhanced exit analysis."""
+        try:
+            follow_wallet = binary_decisions.get('follow_wallet', False)
+            follow_sells = binary_decisions.get('follow_sells', False)
+            composite_score = binary_decisions.get('composite_score', 0)
+            
+            if not follow_wallet:
+                return {
+                    'copy_entries': False,
+                    'copy_exits': False,
+                    'tp1_percent': 0,
+                    'tp2_percent': 0,
+                    'tp3_percent': 0,
+                    'stop_loss_percent': -35,
+                    'position_size_sol': '0',
+                    'reasoning': 'Do not follow - insufficient score or volume'
+                }
+            
+            # Get enhanced exit analysis results for strategy customization
+            token_analysis = analysis_result.get('token_analysis', [])
+            exit_analysis = self._enhanced_exit_analysis(token_analysis)
+            trader_pattern = self._identify_trader_pattern(token_analysis)
+            
+            if follow_sells:
+                # MIRROR STRATEGY: Copy their exits with safety buffer
+                avg_exit_roi = self._calculate_average_exit_roi(token_analysis)
+                
+                # Use exit analysis to fine-tune mirroring
+                profit_metrics = exit_analysis.get('profit_metrics', {})
+                max_win = profit_metrics.get('max_win_roi', 100)
+                
+                return {
+                    'copy_entries': True,
+                    'copy_exits': True,
+                    'tp1_percent': max(50, int(avg_exit_roi * 0.8)),  # 80% of their average
+                    'tp2_percent': max(100, int(avg_exit_roi * 1.5)),  # 150% of their average
+                    'tp3_percent': max(200, min(int(max_win * 0.8), int(avg_exit_roi * 3.0))),  # Cap at 80% of their max
+                    'stop_loss_percent': -35,
+                    'position_size_sol': self._recommend_position_size(token_analysis),
+                    'reasoning': f'Mirror strategy - excellent exit discipline (Pattern: {trader_pattern}, Exit Score: {exit_analysis.get("exit_quality_score", 0):.1f})'
+                }
+            else:
+                # CUSTOM STRATEGY: Based on why they failed exit analysis
+                exit_quality = exit_analysis.get('exit_quality_score', 0)
+                timing_score = exit_analysis.get('timing_metrics', {}).get('timing_score', 0)
+                profit_score = exit_analysis.get('profit_metrics', {}).get('profit_capture_score', 0)
+                
+                # Determine strategy based on specific weaknesses
+                if profit_score < 50:  # They exit too early on winners
+                    return {
+                        'copy_entries': True,
+                        'copy_exits': False,
+                        'tp1_percent': 100,  # Let winners run longer
+                        'tp2_percent': 300,
+                        'tp3_percent': 800,
+                        'stop_loss_percent': -40,
+                        'position_size_sol': self._recommend_position_size(token_analysis),
+                        'reasoning': f'Custom strategy - they exit winners too early (Profit Score: {profit_score:.1f})'
+                    }
+                elif timing_score < 50:  # Poor timing
+                    return {
+                        'copy_entries': True,
+                        'copy_exits': False,
+                        'tp1_percent': 75,  # Medium targets
+                        'tp2_percent': 200,
+                        'tp3_percent': 500,
+                        'stop_loss_percent': -30,
+                        'position_size_sol': self._recommend_position_size(token_analysis),
+                        'reasoning': f'Custom strategy - poor exit timing (Timing Score: {timing_score:.1f})'
+                    }
+                else:  # General poor exit discipline
+                    if trader_pattern == 'gem_hunter':
+                        return {
+                            'copy_entries': True,
+                            'copy_exits': False,
+                            'tp1_percent': 100,
+                            'tp2_percent': 300,
+                            'tp3_percent': 800,
+                            'stop_loss_percent': -40,
+                            'position_size_sol': self._recommend_position_size(token_analysis),
+                            'reasoning': f'Gem hunter with poor exits - let winners run (Exit Score: {exit_quality:.1f})'
+                        }
+                    elif trader_pattern in ['scalper', 'consistent_scalper']:
+                        return {
+                            'copy_entries': True,
+                            'copy_exits': False,
+                            'tp1_percent': 50,
+                            'tp2_percent': 100,
+                            'tp3_percent': 200,
+                            'stop_loss_percent': -25,
+                            'position_size_sol': self._recommend_position_size(token_analysis),
+                            'reasoning': f'Scalper with poor exits - conservative targets (Exit Score: {exit_quality:.1f})'
+                        }
+                    else:
+                        return {
+                            'copy_entries': True,
+                            'copy_exits': False,
+                            'tp1_percent': 75,
+                            'tp2_percent': 200,
+                            'tp3_percent': 500,
+                            'stop_loss_percent': -35,
+                            'position_size_sol': self._recommend_position_size(token_analysis),
+                            'reasoning': f'Mixed pattern with poor exits - balanced approach (Exit Score: {exit_quality:.1f})'
+                        }
+            
+        except Exception as e:
+            logger.error(f"Error generating strategy: {str(e)}")
+            return {
+                'copy_entries': False,
+                'copy_exits': False,
+                'tp1_percent': 0,
+                'tp2_percent': 0,
+                'tp3_percent': 0,
+                'stop_loss_percent': -35,
+                'position_size_sol': '0',
+                'reasoning': f'Error generating strategy: {str(e)}'
+            }
+    
+    def _identify_trader_pattern(self, token_analysis: List[Dict[str, Any]]) -> str:
+        """Identify trader pattern from token analysis data."""
+        if not token_analysis:
+            return 'unknown'
+        
+        completed_trades = [t for t in token_analysis if t.get('trade_status') == 'completed']
+        
+        if len(completed_trades) < 2:
+            return 'insufficient_data'
+        
+        # Calculate pattern metrics from data
+        rois = [t.get('roi_percent', 0) for t in completed_trades]
+        hold_times = [t.get('hold_time_hours', 0) for t in completed_trades]
+        
+        avg_roi = sum(rois) / len(rois)
+        avg_hold_time = sum(hold_times) / len(hold_times)
+        roi_std = (sum((roi - avg_roi) ** 2 for roi in rois) / len(rois)) ** 0.5
+        
+        # Pattern identification based on data
+        if roi_std > 100 and max(rois) > 200:
+            return 'gem_hunter'
+        elif roi_std < 50 and avg_roi > 20:
+            return 'consistent_scalper'
+        elif roi_std > 80:
+            return 'volatile_trader'
+        else:
+            return 'mixed_strategy'
+    
+    def _calculate_average_exit_roi(self, token_analysis: List[Dict[str, Any]]) -> float:
+        """Calculate average exit ROI for profitable trades."""
+        completed_trades = [t for t in token_analysis if t.get('trade_status') == 'completed']
+        profitable_trades = [t for t in completed_trades if t.get('roi_percent', 0) > 0]
+        
+        if not profitable_trades:
+            return 50  # Default
+        
+        return sum(t.get('roi_percent', 0) for t in profitable_trades) / len(profitable_trades)
+    
+    def _recommend_position_size(self, token_analysis: List[Dict[str, Any]]) -> str:
+        """Recommend position size based on their typical bet size."""
+        if not token_analysis:
+            return '1-5'
+        
+        # Calculate their average bet size
+        bet_sizes = []
+        for token in token_analysis:
+            total_sol_in = token.get('total_sol_in', 0)
+            if total_sol_in > 0:
+                bet_sizes.append(total_sol_in)
+        
+        if not bet_sizes:
+            return '1-5'
+        
+        avg_bet_size = sum(bet_sizes) / len(bet_sizes)
+        
+        # Return string format that won't be converted to dates by Excel
+        if avg_bet_size < 1:
+            return '0.5-2'
+        elif avg_bet_size < 5:
+            return '1-5' 
+        elif avg_bet_size < 10:
+            return '2-10'
+        elif avg_bet_size < 20:
+            return '5-20'
+        else:
+            return '10-50'  # Cap recommendation for very large traders
+    
     def _generate_mock_wallet_data(self, wallet_address: str) -> Dict[str, Any]:
         """Generate mock wallet data for development/testing."""
         import random
@@ -447,3 +1011,8 @@ class ZeusAnalyzer:
             'largest_loss_percent': random.uniform(-90, -20),
             'source': 'mock_development_data'
         }
+    
+    def __del__(self):
+        """Cleanup thread pool."""
+        if hasattr(self, 'executor'):
+            self.executor.shutdown(wait=False)
