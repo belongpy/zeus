@@ -216,66 +216,72 @@ Examples:
         print("    🔧 ZEUS API CONFIGURATION", flush=True)
         print("="*70, flush=True)
         
+        # Ensure api_keys section exists
+        if "api_keys" not in self.config:
+            self.config["api_keys"] = {}
+        
+        api_keys = self.config["api_keys"]
+        
         # Cielo Finance API (REQUIRED)
         print("\n💰 Cielo Finance API Key (REQUIRED for wallet analysis)")
-        current_cielo = self.config.get("cielo_api_key", "")
+        current_cielo = api_keys.get("cielo_api_key", "")
         if current_cielo:
             print(f"Current: {current_cielo[:8]}...")
             change = input("Change Cielo API key? (y/N): ").lower().strip()
             if change == 'y':
                 new_key = input("Enter new Cielo Finance API key: ").strip()
                 if new_key:
-                    self.config["cielo_api_key"] = new_key
+                    api_keys["cielo_api_key"] = new_key
                     print("✅ Updated")
         else:
             new_key = input("Enter Cielo Finance API key: ").strip()
             if new_key:
-                self.config["cielo_api_key"] = new_key
+                api_keys["cielo_api_key"] = new_key
                 print("✅ Configured")
         
         # Birdeye API (RECOMMENDED)
         print("\n🔍 Birdeye API Key (RECOMMENDED for token analysis)")
-        current_birdeye = self.config.get("birdeye_api_key", "")
+        current_birdeye = api_keys.get("birdeye_api_key", "")
         if current_birdeye:
             print(f"Current: {current_birdeye[:8]}...")
             change = input("Change Birdeye API key? (y/N): ").lower().strip()
             if change == 'y':
                 new_key = input("Enter new Birdeye API key: ").strip()
                 if new_key:
-                    self.config["birdeye_api_key"] = new_key
+                    api_keys["birdeye_api_key"] = new_key
                     print("✅ Updated")
         else:
             new_key = input("Enter Birdeye API key (or Enter to skip): ").strip()
             if new_key:
-                self.config["birdeye_api_key"] = new_key
+                api_keys["birdeye_api_key"] = new_key
                 print("✅ Configured")
         
         # Helius API (OPTIONAL)
         print("\n🚀 Helius API Key (OPTIONAL for enhanced analysis)")
-        current_helius = self.config.get("helius_api_key", "")
+        current_helius = api_keys.get("helius_api_key", "")
         if current_helius:
             print(f"Current: {current_helius[:8]}...")
             change = input("Change Helius API key? (y/N): ").lower().strip()
             if change == 'y':
                 new_key = input("Enter new Helius API key: ").strip()
                 if new_key:
-                    self.config["helius_api_key"] = new_key
+                    api_keys["helius_api_key"] = new_key
                     print("✅ Updated")
         else:
             new_key = input("Enter Helius API key (or Enter to skip): ").strip()
             if new_key:
-                self.config["helius_api_key"] = new_key
+                api_keys["helius_api_key"] = new_key
                 print("✅ Configured")
         
         # RPC URL
         print("\n🌐 Solana RPC URL")
-        current_rpc = self.config.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
+        current_rpc = api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
         print(f"Current: {current_rpc}")
         change = input("Change RPC URL? (y/N): ").lower().strip()
         if change == 'y':
             new_rpc = input("Enter RPC URL: ").strip()
             if new_rpc:
-                self.config["solana_rpc_url"] = new_rpc
+                api_keys["solana_rpc_url"] = new_rpc
                 print("✅ Updated")
         
         save_config(self.config)
@@ -289,12 +295,13 @@ Examples:
         print("="*70, flush=True)
         
         print(f"\n🔑 API KEYS:")
-        print(f"   Cielo Finance: {'✅ Configured' if self.config.get('cielo_api_key') else '❌ Not configured'}")
-        print(f"   Birdeye: {'✅ Configured' if self.config.get('birdeye_api_key') else '⚠️ Not configured'}")
-        print(f"   Helius: {'✅ Configured' if self.config.get('helius_api_key') else '⚠️ Not configured'}")
+        api_keys = self.config.get("api_keys", {})
+        print(f"   Cielo Finance: {'✅ Configured' if api_keys.get('cielo_api_key') else '❌ Not configured'}")
+        print(f"   Birdeye: {'✅ Configured' if api_keys.get('birdeye_api_key') else '⚠️ Not configured'}")
+        print(f"   Helius: {'✅ Configured' if api_keys.get('helius_api_key') else '⚠️ Not configured'}")
         
         print(f"\n🌐 RPC ENDPOINT:")
-        print(f"   URL: {self.config.get('solana_rpc_url', 'Default')}")
+        print(f"   URL: {api_keys.get('solana_rpc_url', 'https://api.mainnet-beta.solana.com')}")
         
         print(f"\n📊 ANALYSIS SETTINGS:")
         analysis_config = self.config.get('analysis', {})
@@ -311,10 +318,11 @@ Examples:
         print(f"   Volume Qualifier: ≥{analysis_config.get('min_unique_tokens', 6)} unique tokens")
         
         # Check system readiness
-        cielo_ok = bool(self.config.get("cielo_api_key"))
+        api_keys = self.config.get("api_keys", {})
+        cielo_ok = bool(api_keys.get("cielo_api_key"))
         print(f"\n🎯 SYSTEM READINESS:")
         print(f"   Core Analysis: {'✅ Ready' if cielo_ok else '❌ Need Cielo API'}")
-        print(f"   Enhanced Analysis: {'✅ Ready' if self.config.get('birdeye_api_key') else '⚠️ Limited'}")
+        print(f"   Enhanced Analysis: {'✅ Ready' if api_keys.get('birdeye_api_key') else '⚠️ Limited'}")
         
         input("\nPress Enter to continue...")
     
@@ -327,11 +335,13 @@ Examples:
         try:
             from zeus_api_manager import ZeusAPIManager
             
+            # Initialize - read API keys from config file
+            api_keys = self.config.get("api_keys", {})
             api_manager = ZeusAPIManager(
-                self.config.get("birdeye_api_key", ""),
-                self.config.get("cielo_api_key", ""),
-                self.config.get("helius_api_key", ""),
-                self.config.get("solana_rpc_url")
+                api_keys.get("birdeye_api_key", ""),
+                api_keys.get("cielo_api_key", ""),
+                api_keys.get("helius_api_key", ""),
+                api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
             )
             
             status = api_manager.get_api_status()
@@ -376,12 +386,13 @@ Examples:
             from zeus_analyzer import ZeusAnalyzer
             from zeus_api_manager import ZeusAPIManager
             
-            # Initialize
+            # Initialize - get API keys from nested config structure
+            api_config = self.config.get("api_keys", {})
             api_manager = ZeusAPIManager(
-                self.config.get("birdeye_api_key", ""),
-                self.config.get("cielo_api_key", ""),
-                self.config.get("helius_api_key", ""),
-                self.config.get("solana_rpc_url")
+                api_config.get("birdeye_api_key", ""),
+                api_config.get("cielo_api_key", ""),
+                api_config.get("helius_api_key", ""),
+                api_config.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
@@ -437,12 +448,13 @@ Examples:
             from zeus_analyzer import ZeusAnalyzer
             from zeus_api_manager import ZeusAPIManager
             
-            # Initialize
+            # Initialize - read API keys from config file
+            api_keys = self.config.get("api_keys", {})
             api_manager = ZeusAPIManager(
-                self.config.get("birdeye_api_key", ""),
-                self.config.get("cielo_api_key", ""),
-                self.config.get("helius_api_key", ""),
-                self.config.get("solana_rpc_url")
+                api_keys.get("birdeye_api_key", ""),
+                api_keys.get("cielo_api_key", ""),
+                api_keys.get("helius_api_key", ""),
+                api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
@@ -555,11 +567,13 @@ Examples:
         try:
             from zeus_api_manager import ZeusAPIManager
             
+            # Read API keys from config file
+            api_keys = self.config.get("api_keys", {})
             api_manager = ZeusAPIManager(
-                self.config.get("birdeye_api_key", ""),
-                self.config.get("cielo_api_key", ""),
-                self.config.get("helius_api_key", ""),
-                self.config.get("solana_rpc_url")
+                api_keys.get("birdeye_api_key", ""),
+                api_keys.get("cielo_api_key", ""),
+                api_keys.get("helius_api_key", ""),
+                api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
             )
             
             status = api_manager.get_api_status()
@@ -653,20 +667,26 @@ Examples:
     
     def _handle_configure_command(self, args):
         """Handle configure command."""
+        # Ensure api_keys section exists
+        if "api_keys" not in self.config:
+            self.config["api_keys"] = {}
+        
+        api_keys = self.config["api_keys"]
+        
         if args.birdeye_api_key:
-            self.config["birdeye_api_key"] = args.birdeye_api_key
+            api_keys["birdeye_api_key"] = args.birdeye_api_key
             logger.info("Birdeye API key configured")
         
         if args.cielo_api_key:
-            self.config["cielo_api_key"] = args.cielo_api_key
+            api_keys["cielo_api_key"] = args.cielo_api_key
             logger.info("Cielo Finance API key configured")
         
         if args.helius_api_key:
-            self.config["helius_api_key"] = args.helius_api_key
+            api_keys["helius_api_key"] = args.helius_api_key
             logger.info("Helius API key configured")
         
         if args.rpc_url:
-            self.config["solana_rpc_url"] = args.rpc_url
+            api_keys["solana_rpc_url"] = args.rpc_url
             logger.info("RPC URL configured")
         
         save_config(self.config)
@@ -679,12 +699,13 @@ Examples:
             from zeus_api_manager import ZeusAPIManager
             from zeus_export import export_zeus_analysis
             
-            # Initialize
+            # Initialize - read API keys from config file
+            api_keys = self.config.get("api_keys", {})
             api_manager = ZeusAPIManager(
-                self.config.get("birdeye_api_key", ""),
-                self.config.get("cielo_api_key", ""),
-                self.config.get("helius_api_key", ""),
-                self.config.get("solana_rpc_url")
+                api_keys.get("birdeye_api_key", ""),
+                api_keys.get("cielo_api_key", ""),
+                api_keys.get("helius_api_key", ""),
+                api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
@@ -731,11 +752,13 @@ Examples:
         try:
             from zeus_api_manager import ZeusAPIManager
             
+            # Read API keys from config file  
+            api_keys = self.config.get("api_keys", {})
             api_manager = ZeusAPIManager(
-                self.config.get("birdeye_api_key", ""),
-                self.config.get("cielo_api_key", ""),
-                self.config.get("helius_api_key", ""),
-                self.config.get("solana_rpc_url")
+                api_keys.get("birdeye_api_key", ""),
+                api_keys.get("cielo_api_key", ""),
+                api_keys.get("helius_api_key", ""),
+                api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
             )
             
             status = api_manager.get_api_status()

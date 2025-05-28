@@ -318,7 +318,7 @@ class ZeusConfig:
             logger.error(f"Error setting config value {key_path}: {str(e)}")
     
     def get_api_config(self) -> Dict[str, str]:
-        """Get API configuration."""
+        """Get API configuration from nested api_keys section."""
         return self.config.get('api_keys', {})
     
     def get_analysis_config(self) -> Dict[str, Any]:
@@ -352,15 +352,19 @@ class ZeusConfig:
     
     def update_api_key(self, api_name: str, api_key: str) -> None:
         """
-        Update API key in configuration.
+        Update API key in nested api_keys configuration.
         
         Args:
             api_name: Name of the API (birdeye, cielo, helius)
             api_key: API key value
         """
-        api_keys = self.config.setdefault('api_keys', {})
-        api_keys[f'{api_name}_api_key'] = api_key
-        logger.info(f"Updated {api_name} API key")
+        # Ensure api_keys section exists
+        if 'api_keys' not in self.config:
+            self.config['api_keys'] = {}
+        
+        # Update the API key in the nested structure
+        self.config['api_keys'][f'{api_name}_api_key'] = api_key
+        logger.info(f"Updated {api_name} API key in nested config")
     
     def get_binary_decision_thresholds(self) -> Dict[str, float]:
         """Get binary decision thresholds."""
