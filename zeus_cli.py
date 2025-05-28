@@ -10,6 +10,8 @@ Features:
 - Binary decisions (Follow Wallet/Follow Sells)
 - New scoring system with volume qualifier
 - Bot-friendly CSV output
+
+FIXED VERSION - Proper API key initialization
 """
 
 import os
@@ -56,10 +58,12 @@ def load_config() -> Dict[str, Any]:
         with open(CONFIG_FILE, 'r') as f:
             return json.load(f)
     return {
-        "birdeye_api_key": "",
-        "cielo_api_key": "",
-        "helius_api_key": "",
-        "solana_rpc_url": "https://api.mainnet-beta.solana.com",
+        "api_keys": {
+            "birdeye_api_key": "",
+            "cielo_api_key": "",
+            "helius_api_key": "",
+            "solana_rpc_url": "https://api.mainnet-beta.solana.com"
+        },
         "analysis": {
             "days_to_analyze": 30,
             "min_unique_tokens": 6,
@@ -114,6 +118,23 @@ def ensure_output_dir(output_path: str) -> str:
         return os.path.join(output_dir, output_path)
     
     return output_path
+
+def get_api_keys_from_config(config: Dict[str, Any]) -> Dict[str, str]:
+    """Extract API keys from config - handles flat format."""
+    
+    # Your config has keys at root level, so use them directly
+    extracted = {
+        "birdeye_api_key": str(config.get("birdeye_api_key", "")).strip(),
+        "cielo_api_key": str(config.get("cielo_api_key", "")).strip(), 
+        "helius_api_key": str(config.get("helius_api_key", "")).strip(),
+        "solana_rpc_url": str(config.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")).strip()
+    }
+    
+    # Debug logging
+    configured_keys = [k for k, v in extracted.items() if v]
+    logger.info(f"Extracted API keys: {configured_keys}")
+    
+    return extracted
 
 class ZeusCLI:
     """Zeus CLI Application with binary decision system."""
@@ -335,13 +356,15 @@ Examples:
         try:
             from zeus_api_manager import ZeusAPIManager
             
-            # Initialize - read API keys from config file
-            api_keys = self.config.get("api_keys", {})
+            # Initialize with proper API key extraction
+            api_keys_dict = get_api_keys_from_config(self.config)
+            logger.debug(f"Extracted API keys: {list(api_keys_dict.keys())}")
+            
             api_manager = ZeusAPIManager(
-                api_keys.get("birdeye_api_key", ""),
-                api_keys.get("cielo_api_key", ""),
-                api_keys.get("helius_api_key", ""),
-                api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
+                birdeye_api_key=api_keys_dict["birdeye_api_key"],
+                cielo_api_key=api_keys_dict["cielo_api_key"],
+                helius_api_key=api_keys_dict["helius_api_key"],
+                rpc_url=api_keys_dict["solana_rpc_url"]
             )
             
             status = api_manager.get_api_status()
@@ -361,6 +384,7 @@ Examples:
             
         except Exception as e:
             print(f"❌ Error testing APIs: {str(e)}")
+            logger.error(f"API test error: {str(e)}")
         
         input("\nPress Enter to continue...")
     
@@ -386,13 +410,15 @@ Examples:
             from zeus_analyzer import ZeusAnalyzer
             from zeus_api_manager import ZeusAPIManager
             
-            # Initialize - get API keys from nested config structure
-            api_config = self.config.get("api_keys", {})
+            # Initialize with proper API key extraction
+            api_keys_dict = get_api_keys_from_config(self.config)
+            logger.info(f"Initializing API manager with keys: {[k for k, v in api_keys_dict.items() if v]}")
+            
             api_manager = ZeusAPIManager(
-                api_config.get("birdeye_api_key", ""),
-                api_config.get("cielo_api_key", ""),
-                api_config.get("helius_api_key", ""),
-                api_config.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
+                birdeye_api_key=api_keys_dict["birdeye_api_key"],
+                cielo_api_key=api_keys_dict["cielo_api_key"],
+                helius_api_key=api_keys_dict["helius_api_key"],
+                rpc_url=api_keys_dict["solana_rpc_url"]
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
@@ -448,13 +474,14 @@ Examples:
             from zeus_analyzer import ZeusAnalyzer
             from zeus_api_manager import ZeusAPIManager
             
-            # Initialize - read API keys from config file
-            api_keys = self.config.get("api_keys", {})
+            # Initialize with proper API key extraction
+            api_keys_dict = get_api_keys_from_config(self.config)
+            
             api_manager = ZeusAPIManager(
-                api_keys.get("birdeye_api_key", ""),
-                api_keys.get("cielo_api_key", ""),
-                api_keys.get("helius_api_key", ""),
-                api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
+                birdeye_api_key=api_keys_dict["birdeye_api_key"],
+                cielo_api_key=api_keys_dict["cielo_api_key"],
+                helius_api_key=api_keys_dict["helius_api_key"],
+                rpc_url=api_keys_dict["solana_rpc_url"]
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
@@ -567,13 +594,14 @@ Examples:
         try:
             from zeus_api_manager import ZeusAPIManager
             
-            # Read API keys from config file
-            api_keys = self.config.get("api_keys", {})
+            # Initialize with proper API key extraction
+            api_keys_dict = get_api_keys_from_config(self.config)
+            
             api_manager = ZeusAPIManager(
-                api_keys.get("birdeye_api_key", ""),
-                api_keys.get("cielo_api_key", ""),
-                api_keys.get("helius_api_key", ""),
-                api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
+                birdeye_api_key=api_keys_dict["birdeye_api_key"],
+                cielo_api_key=api_keys_dict["cielo_api_key"],
+                helius_api_key=api_keys_dict["helius_api_key"],
+                rpc_url=api_keys_dict["solana_rpc_url"]
             )
             
             status = api_manager.get_api_status()
@@ -597,6 +625,7 @@ Examples:
             
         except Exception as e:
             print(f"❌ Error checking system status: {str(e)}")
+            logger.error(f"System status error: {str(e)}")
         
         input("\nPress Enter to continue...")
     
@@ -699,13 +728,14 @@ Examples:
             from zeus_api_manager import ZeusAPIManager
             from zeus_export import export_zeus_analysis
             
-            # Initialize - read API keys from config file
-            api_keys = self.config.get("api_keys", {})
+            # Initialize with proper API key extraction
+            api_keys_dict = get_api_keys_from_config(self.config)
+            
             api_manager = ZeusAPIManager(
-                api_keys.get("birdeye_api_key", ""),
-                api_keys.get("cielo_api_key", ""),
-                api_keys.get("helius_api_key", ""),
-                api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
+                birdeye_api_key=api_keys_dict["birdeye_api_key"],
+                cielo_api_key=api_keys_dict["cielo_api_key"],
+                helius_api_key=api_keys_dict["helius_api_key"],
+                rpc_url=api_keys_dict["solana_rpc_url"]
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
@@ -752,13 +782,14 @@ Examples:
         try:
             from zeus_api_manager import ZeusAPIManager
             
-            # Read API keys from config file  
-            api_keys = self.config.get("api_keys", {})
+            # Initialize with proper API key extraction
+            api_keys_dict = get_api_keys_from_config(self.config)
+            
             api_manager = ZeusAPIManager(
-                api_keys.get("birdeye_api_key", ""),
-                api_keys.get("cielo_api_key", ""),
-                api_keys.get("helius_api_key", ""),
-                api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
+                birdeye_api_key=api_keys_dict["birdeye_api_key"],
+                cielo_api_key=api_keys_dict["cielo_api_key"],
+                helius_api_key=api_keys_dict["helius_api_key"],
+                rpc_url=api_keys_dict["solana_rpc_url"]
             )
             
             status = api_manager.get_api_status()
