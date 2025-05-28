@@ -11,7 +11,7 @@ Features:
 - New scoring system with volume qualifier
 - Bot-friendly CSV output
 
-FIXED VERSION - Proper API key initialization
+FIXED VERSION - Clean Zeus splash screen + All functionality preserved
 """
 
 import os
@@ -180,11 +180,13 @@ Examples:
         return parser
     
     def _handle_numbered_menu(self):
-        """Interactive numbered menu."""
+        """Interactive numbered menu with clean Zeus splash screen."""
         print("\n" + "="*80, flush=True)
-        print("ZEUS - Standalone Wallet Analysis System", flush=True)
-        print("🎯 Binary Decision System with 30-Day Analysis", flush=True)
-        print(f"📅 Current Date: {datetime.now().strftime('%Y-%m-%d')}", flush=True)
+        print("                     ⚡ ███████  ███████  ██    ██  ███████ ⚡", flush=True) 
+        print("                     ⚡      ██  ██       ██    ██  ██      ⚡", flush=True)
+        print("                     ⚡     ██   █████    ██    ██  ███████ ⚡", flush=True)
+        print("                     ⚡    ██    ██       ██    ██       ██ ⚡", flush=True)
+        print("                     ⚡ ███████  ███████   ██████   ███████ ⚡", flush=True)
         print("="*80, flush=True)
         print("\nSelect an option:", flush=True)
         print("\n🔧 CONFIGURATION:", flush=True)
@@ -579,11 +581,12 @@ Examples:
         scoring = result.get('scoring_breakdown', {})
         if scoring:
             print(f"\n🔢 SCORING BREAKDOWN:")
-            print(f"   Risk-Adjusted Performance: {scoring.get('risk_adjusted_score', 0):.1f}/30")
-            print(f"   Distribution Quality: {scoring.get('distribution_score', 0):.1f}/25") 
-            print(f"   Trading Discipline: {scoring.get('discipline_score', 0):.1f}/20")
-            print(f"   Market Impact Awareness: {scoring.get('market_impact_score', 0):.1f}/15")
-            print(f"   Consistency & Reliability: {scoring.get('consistency_score', 0):.1f}/10")
+            component_scores = scoring.get('component_scores', {})
+            print(f"   Risk-Adjusted Performance: {component_scores.get('risk_adjusted_score', 0):.1f}/30")
+            print(f"   Distribution Quality: {component_scores.get('distribution_score', 0):.1f}/25") 
+            print(f"   Trading Discipline: {component_scores.get('discipline_score', 0):.1f}/20")
+            print(f"   Market Impact Awareness: {component_scores.get('market_impact_score', 0):.1f}/15")
+            print(f"   Consistency & Reliability: {component_scores.get('consistency_score', 0):.1f}/10")
     
     def _system_status(self):
         """Display system status."""

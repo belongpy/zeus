@@ -1,6 +1,6 @@
 """
 Zeus API Manager - Cielo Finance with Authentication
-Fixes HTTP 403 "API key is required" error
+Fixed 403 logging - authentication attempts now DEBUG level
 """
 
 import logging
@@ -94,6 +94,7 @@ class ZeusAPIManager:
         """
         Get wallet trading statistics from Cielo Finance API.
         Tries multiple authentication methods to handle HTTP 403.
+        FIXED: Authentication attempts now DEBUG level to reduce noise.
         """
         try:
             if not self.cielo_api_key:
@@ -108,7 +109,7 @@ class ZeusAPIManager:
             url = f"{self.cielo_base_url}/{wallet_address}/trading-stats"
             
             logger.info(f"Making Cielo API call: {url}")
-            logger.info(f"Using API key: {self.cielo_api_key[:15]}...")
+            logger.debug(f"Using API key: {self.cielo_api_key[:15]}...")
             
             # Try different authentication methods
             auth_methods = [
@@ -127,24 +128,24 @@ class ZeusAPIManager:
                 'Content-Type': 'application/json'
             }
             
-            # Try each authentication method
+            # Try each authentication method - FIXED: Now DEBUG level
             for i, auth_header in enumerate(auth_methods, 1):
                 headers = {**base_headers, **auth_header}
                 auth_method = list(auth_header.keys())[0]
                 
-                logger.info(f"Trying auth method {i}/{len(auth_methods)}: {auth_method}")
+                logger.debug(f"Trying auth method {i}/{len(auth_methods)}: {auth_method}")
                 
                 try:
                     response = self.session.get(url, headers=headers, timeout=30)
                     
-                    logger.info(f"Response: HTTP {response.status_code}")
+                    logger.debug(f"Response: HTTP {response.status_code}")
                     
                     if response.status_code == 200:
                         data = response.json()
                         self.api_stats['cielo']['success'] += 1
                         
                         logger.info(f"✅ Cielo API success with {auth_method}!")
-                        logger.info(f"Response keys: {list(data.keys()) if isinstance(data, dict) else 'Non-dict response'}")
+                        logger.debug(f"Response keys: {list(data.keys()) if isinstance(data, dict) else 'Non-dict response'}")
                         
                         return {
                             'success': True,
@@ -153,13 +154,13 @@ class ZeusAPIManager:
                         }
                     
                     elif response.status_code == 403:
-                        logger.info(f"403 Forbidden with {auth_method} - trying next method")
+                        logger.debug(f"403 Forbidden with {auth_method} - trying next method")
                         if response.text:
                             logger.debug(f"403 response: {response.text[:200]}")
                         continue
                     
                     elif response.status_code == 401:
-                        logger.info(f"401 Unauthorized with {auth_method} - trying next method")
+                        logger.debug(f"401 Unauthorized with {auth_method} - trying next method")
                         continue
                     
                     elif response.status_code == 404:
@@ -173,11 +174,11 @@ class ZeusAPIManager:
                         }
                     
                     else:
-                        logger.info(f"HTTP {response.status_code} with {auth_method} - trying next method")
+                        logger.debug(f"HTTP {response.status_code} with {auth_method} - trying next method")
                         continue
                 
                 except requests.exceptions.RequestException as e:
-                    logger.info(f"Request error with {auth_method}: {str(e)}")
+                    logger.debug(f"Request error with {auth_method}: {str(e)}")
                     continue
             
             # If we get here, all auth methods failed
