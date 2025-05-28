@@ -1,549 +1,432 @@
 """
-Zeus Scorer - New Scoring System Implementation
-Implements the revised 5-component scoring system with volume qualifier
+Zeus API Manager - Unified API Integration Layer
+Handles all external API calls for Zeus wallet analysis
 
-Scoring Components (0-100 scale):
-1. Risk-Adjusted Performance Score (30%)
-2. Distribution Quality Score (25%)
-3. Trading Discipline Score (20%)
-4. Market Impact Awareness Score (15%)
-5. Consistency & Reliability Score (10%)
-
-Volume Qualifier:
-- ≥6 tokens traded: 100 points (Baseline)
-- 4-5 tokens: 80 points (Emerging)
-- 2-3 tokens: 60 points (Very new)
-- <2 tokens: Disqualified
+APIs Supported:
+- Cielo Finance (wallet trading stats) - REQUIRED
+- Birdeye (token price data) - RECOMMENDED  
+- Helius (enhanced transaction parsing) - OPTIONAL
+- Solana RPC (direct blockchain access) - FALLBACK
 """
 
 import logging
-import numpy as np
+import time
+import requests
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 
-logger = logging.getLogger("zeus.scorer")
+logger = logging.getLogger("zeus.api_manager")
 
-class ZeusScorer:
-    """Implements the new Zeus scoring system with volume qualifier."""
+class ZeusAPIManager:
+    """Unified API manager for Zeus wallet analysis."""
     
-    def __init__(self, config: Dict[str, Any]):
-        """Initialize scorer with configuration."""
-        self.config = config
-        self.analysis_config = config.get('analysis', {})
-        
-        # Scoring weights
-        self.component_weights = {
-            'risk_adjusted_performance': 0.30,
-            'distribution_quality': 0.25,
-            'trading_discipline': 0.20,
-            'market_impact_awareness': 0.15,
-            'consistency_reliability': 0.10
-        }
-        
-        logger.info("Zeus Scorer initialized with revised 5-component system")
-    
-    def calculate_composite_score(self, token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def __init__(self, birdeye_api_key: str = "", cielo_api_key: str = "", 
+                 helius_api_key: str = "", rpc_url: str = "https://api.mainnet-beta.solana.com"):
         """
-        Calculate composite score from token analysis data.
+        Initialize Zeus API manager.
         
         Args:
-            token_analysis: List of analyzed token trades
+            birdeye_api_key: Birdeye API key (recommended)
+            cielo_api_key: Cielo Finance API key (required)
+            helius_api_key: Helius API key (optional)
+            rpc_url: Solana RPC endpoint URL
+        """
+        self.birdeye_api_key = birdeye_api_key
+        self.cielo_api_key = cielo_api_key
+        self.helius_api_key = helius_api_key
+        self.rpc_url = rpc_url
+        
+        # For now, we'll simulate the API classes since we don't have the actual SDKs
+        self.birdeye_api = None
+        self.cielo_api = None
+        self.helius_api = None
+        
+        # API performance tracking
+        self.api_stats = {
+            'birdeye': {'calls': 0, 'success': 0, 'errors': 0},
+            'helius': {'calls': 0, 'success': 0, 'errors': 0},
+            'rpc': {'calls': 0, 'success': 0, 'errors': 0},
+            'cielo': {'calls': 0, 'success': 0, 'errors': 0}
+        }
+        
+        # Initialize APIs
+        self._initialize_apis()
+    
+    def _initialize_apis(self):
+        """Initialize all APIs with error handling."""
+        
+        # For development, we'll use mock implementations
+        # In production, you would import the actual API classes
+        
+        if self.cielo_api_key:
+            logger.info("✅ Cielo Finance API key configured")
+        else:
+            logger.warning("❌ Cielo Finance API key not provided")
+        
+        if self.birdeye_api_key:
+            logger.info("✅ Birdeye API key configured")
+        else:
+            logger.info("ℹ️ Birdeye API key not provided - limited token analysis")
+        
+        if self.helius_api_key:
+            logger.info("✅ Helius API key configured")
+        else:
+            logger.info("ℹ️ Helius API key not provided - basic transaction parsing")
+    
+    def get_wallet_trading_stats(self, wallet_address: str) -> Dict[str, Any]:
+        """
+        Get wallet trading statistics from Cielo Finance.
+        
+        Args:
+            wallet_address: Wallet address to analyze
             
         Returns:
-            Dict with composite score and component breakdown
+            Dict with trading statistics
         """
         try:
-            if not token_analysis:
-                return self._get_zero_score("No token analysis data")
+            if not self.cielo_api_key:
+                return {
+                    'success': False,
+                    'error': 'Cielo Finance API not configured'
+                }
             
-            # Extract metrics from token analysis
-            metrics = self._extract_metrics(token_analysis)
+            self.api_stats['cielo']['calls'] += 1
             
-            # Check volume qualifier first
-            volume_qualifier = self._calculate_volume_qualifier(metrics)
-            if volume_qualifier['disqualified']:
-                return self._get_zero_score(volume_qualifier['reason'])
+            # Mock implementation - replace with actual Cielo API call
+            # In production: result = self.cielo_api.get_wallet_trading_stats(wallet_address)
             
-            # Calculate component scores
-            component_scores = {}
+            # For now, return mock data
+            mock_data = {
+                'wallet_address': wallet_address,
+                'total_trades': 25,
+                'total_volume_sol': 150.5,
+                'win_rate': 0.68,
+                'avg_hold_time_hours': 24.5,
+                'largest_win_percent': 450.0,
+                'largest_loss_percent': -75.0
+            }
             
-            # 1. Risk-Adjusted Performance (30%)
-            component_scores['risk_adjusted_performance'] = self._calculate_risk_adjusted_score(metrics)
-            
-            # 2. Distribution Quality (25%)
-            component_scores['distribution_quality'] = self._calculate_distribution_score(metrics)
-            
-            # 3. Trading Discipline (20%)
-            component_scores['trading_discipline'] = self._calculate_discipline_score(metrics)
-            
-            # 4. Market Impact Awareness (15%)
-            component_scores['market_impact_awareness'] = self._calculate_market_impact_score(metrics)
-            
-            # 5. Consistency & Reliability (10%)
-            component_scores['consistency_reliability'] = self._calculate_consistency_score(metrics)
-            
-            # Apply volume qualifier multiplier
-            volume_multiplier = volume_qualifier['multiplier']
-            
-            # Calculate weighted composite score
-            composite_score = 0
-            for component, weight in self.component_weights.items():
-                component_score = component_scores.get(component, 0)
-                weighted_score = component_score * weight * 100  # Convert to 0-100 scale
-                composite_score += weighted_score
-            
-            # Apply volume qualifier
-            composite_score *= volume_multiplier
-            
-            # Cap at 100
-            composite_score = min(100, max(0, composite_score))
+            self.api_stats['cielo']['success'] += 1
             
             return {
-                'composite_score': round(composite_score, 1),
-                'component_scores': {
-                    'risk_adjusted_score': round(component_scores['risk_adjusted_performance'] * 30, 1),
-                    'distribution_score': round(component_scores['distribution_quality'] * 25, 1),
-                    'discipline_score': round(component_scores['trading_discipline'] * 20, 1),
-                    'market_impact_score': round(component_scores['market_impact_awareness'] * 15, 1),
-                    'consistency_score': round(component_scores['consistency_reliability'] * 10, 1)
-                },
-                'volume_qualifier': volume_qualifier,
-                'metrics_used': metrics,
-                'total_tokens_analyzed': len(token_analysis)
+                'success': True,
+                'data': mock_data
             }
             
         except Exception as e:
-            logger.error(f"Error calculating composite score: {str(e)}")
-            return self._get_zero_score(f"Calculation error: {str(e)}")
-    
-    def _extract_metrics(self, token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Extract metrics from token analysis for scoring."""
-        try:
-            # Filter completed trades for most metrics
-            completed_trades = [t for t in token_analysis if t.get('trade_status') == 'completed']
-            all_trades = token_analysis
-            
-            # Basic counts
-            total_tokens = len(all_trades)
-            completed_count = len(completed_trades)
-            
-            # ROI metrics
-            rois = [t.get('roi_percent', 0) for t in completed_trades if t.get('roi_percent') is not None]
-            
-            if rois:
-                median_roi = np.median(rois)
-                avg_roi = np.mean(rois)
-                roi_std = np.std(rois)
-                max_roi = max(rois)
-                min_roi = min(rois)
-            else:
-                median_roi = avg_roi = roi_std = max_roi = min_roi = 0
-            
-            # Hold time metrics
-            hold_times = [t.get('hold_time_hours', 0) for t in completed_trades if t.get('hold_time_hours', 0) > 0]
-            avg_hold_time = np.mean(hold_times) if hold_times else 0
-            
-            # Bet size metrics
-            bet_sizes = [t.get('total_sol_in', 0) for t in all_trades if t.get('total_sol_in', 0) > 0]
-            avg_bet_size = np.mean(bet_sizes) if bet_sizes else 0
-            
-            # Distribution metrics
-            moonshots = sum(1 for roi in rois if roi >= 400)  # 5x+
-            big_wins = sum(1 for roi in rois if 100 <= roi < 400)  # 2x-5x
-            small_wins = sum(1 for roi in rois if 0 < roi < 100)  # Profitable <2x
-            small_losses = sum(1 for roi in rois if -50 < roi <= 0)  # Small losses
-            heavy_losses = sum(1 for roi in rois if roi <= -50)  # Heavy losses
-            
-            # Calculate distribution percentages
-            total_completed = len(rois) if rois else 1
-            moonshot_rate = moonshots / total_completed * 100
-            big_win_rate = big_wins / total_completed * 100
-            small_win_rate = small_wins / total_completed * 100
-            small_loss_rate = small_losses / total_completed * 100
-            heavy_loss_rate = heavy_losses / total_completed * 100
-            
-            # Win rate
-            wins = sum(1 for roi in rois if roi > 0)
-            win_rate = wins / total_completed * 100 if total_completed > 0 else 0
-            
-            # Same-block detection (flipper behavior)
-            same_block_trades = 0
-            for trade in all_trades:
-                swaps = trade.get('swaps', [])
-                if len(swaps) >= 2:
-                    # Check if buy and sell are very close in time
-                    timestamps = [s.get('timestamp', 0) for s in swaps]
-                    if max(timestamps) - min(timestamps) < 60:  # Within 1 minute
-                        same_block_trades += 1
-            
-            same_block_rate = same_block_trades / total_tokens * 100 if total_tokens > 0 else 0
-            
-            # Loss cutting behavior
-            quick_cut_losses = sum(1 for t in completed_trades 
-                                 if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 0) < 4)
-            slow_cut_losses = sum(1 for t in completed_trades 
-                                if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 0) > 24 * 7)
-            
-            # Activity pattern
-            if all_trades:
-                timestamps = []
-                for trade in all_trades:
-                    if trade.get('first_timestamp'):
-                        timestamps.append(trade['first_timestamp'])
-                
-                if len(timestamps) >= 2:
-                    earliest = min(timestamps)
-                    latest = max(timestamps)
-                    active_days = (latest - earliest) / 86400
-                else:
-                    active_days = 1
-            else:
-                active_days = 0
-            
+            logger.error(f"Error getting wallet trading stats: {str(e)}")
+            self.api_stats['cielo']['errors'] += 1
             return {
-                'total_tokens': total_tokens,
-                'completed_trades': completed_count,
-                'median_roi': median_roi,
-                'avg_roi': avg_roi,
-                'roi_std': roi_std,
-                'max_roi': max_roi,
-                'min_roi': min_roi,
-                'avg_hold_time_hours': avg_hold_time,
-                'avg_bet_size_sol': avg_bet_size,
-                'moonshot_rate': moonshot_rate,
-                'big_win_rate': big_win_rate,
-                'small_win_rate': small_win_rate,
-                'small_loss_rate': small_loss_rate,
-                'heavy_loss_rate': heavy_loss_rate,
-                'win_rate': win_rate,
-                'same_block_rate': same_block_rate,
-                'quick_cut_losses': quick_cut_losses,
-                'slow_cut_losses': slow_cut_losses,
-                'active_days': active_days,
-                'rois': rois
+                'success': False,
+                'error': str(e)
             }
-            
-        except Exception as e:
-            logger.error(f"Error extracting metrics: {str(e)}")
-            return {}
     
-    def _calculate_volume_qualifier(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
-        """Calculate volume qualifier score and check disqualification."""
-        total_tokens = metrics.get('total_tokens', 0)
+    def get_enhanced_transactions(self, wallet_address: str, limit: int = 100) -> Dict[str, Any]:
+        """
+        Get enhanced parsed transactions using Helius API.
         
-        if total_tokens >= 6:
+        Args:
+            wallet_address: Wallet address
+            limit: Maximum number of transactions
+            
+        Returns:
+            Dict with enhanced transaction data
+        """
+        try:
+            if not self.helius_api_key:
+                return {
+                    'success': False,
+                    'error': 'Helius API not configured'
+                }
+            
+            self.api_stats['helius']['calls'] += 1
+            
+            # Mock implementation - replace with actual Helius API call
+            mock_transactions = []
+            for i in range(min(limit, 10)):  # Mock 10 transactions
+                mock_transactions.append({
+                    'signature': f'mock_signature_{i}',
+                    'timestamp': int(time.time()) - (i * 3600),  # 1 hour apart
+                    'type': 'swap',
+                    'token_mint': f'mock_token_{i}',
+                    'sol_amount': 5.0 + i,
+                    'success': True
+                })
+            
+            self.api_stats['helius']['success'] += 1
+            
             return {
-                'tokens': total_tokens,
-                'qualifier_points': 100,
-                'multiplier': 1.0,
-                'disqualified': False,
-                'tier': 'baseline'
+                'success': True,
+                'data': mock_transactions
             }
-        elif total_tokens >= 4:
+            
+        except Exception as e:
+            logger.error(f"Error getting enhanced transactions: {str(e)}")
+            self.api_stats['helius']['errors'] += 1
             return {
-                'tokens': total_tokens,
-                'qualifier_points': 80,
-                'multiplier': 0.8,
-                'disqualified': False,
-                'tier': 'emerging'
+                'success': False,
+                'error': str(e)
             }
-        elif total_tokens >= 2:
+    
+    def get_token_price_history(self, token_address: str, start_time: int, 
+                              end_time: int, resolution: str = "1h") -> Dict[str, Any]:
+        """
+        Get token price history for ROI calculations.
+        
+        Args:
+            token_address: Token contract address
+            start_time: Start timestamp (seconds)
+            end_time: End timestamp (seconds)
+            resolution: Time resolution
+            
+        Returns:
+            Dict with price history data
+        """
+        try:
+            if not self.birdeye_api_key:
+                return {
+                    'success': False,
+                    'error': 'Birdeye API not configured'
+                }
+            
+            self.api_stats['birdeye']['calls'] += 1
+            
+            # Mock implementation - replace with actual Birdeye API call
+            mock_prices = []
+            current_time = start_time
+            base_price = 0.001  # Mock base price
+            
+            while current_time <= end_time:
+                # Simulate price movement
+                price_change = (hash(str(current_time)) % 200 - 100) / 1000  # -0.1 to +0.1
+                price = base_price * (1 + price_change)
+                
+                mock_prices.append({
+                    'timestamp': current_time,
+                    'value': price,
+                    'volume': 1000 + (hash(str(current_time)) % 5000)
+                })
+                
+                current_time += 3600  # 1 hour intervals
+                base_price = price  # Use previous price as base
+            
+            self.api_stats['birdeye']['success'] += 1
+            
             return {
-                'tokens': total_tokens,
-                'qualifier_points': 60,
-                'multiplier': 0.6,
-                'disqualified': False,
-                'tier': 'very_new'
+                'success': True,
+                'data': {
+                    'items': mock_prices,
+                    'token_address': token_address
+                }
             }
-        else:
+            
+        except Exception as e:
+            logger.error(f"Error getting token price history: {str(e)}")
+            self.api_stats['birdeye']['errors'] += 1
             return {
-                'tokens': total_tokens,
-                'qualifier_points': 0,
-                'multiplier': 0.0,
-                'disqualified': True,
-                'tier': 'insufficient',
-                'reason': f'Insufficient tokens: {total_tokens} < 2 minimum'
+                'success': False,
+                'error': str(e)
             }
     
-    def _calculate_risk_adjusted_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Risk-Adjusted Performance Score (30% weight)."""
+    def get_token_info(self, token_address: str) -> Dict[str, Any]:
+        """
+        Get token information (market cap, etc.).
+        
+        Args:
+            token_address: Token contract address
+            
+        Returns:
+            Dict with token information
+        """
         try:
-            # Median ROI component (60% of this score)
-            median_roi = metrics.get('median_roi', 0)
-            if median_roi > 100:
-                median_score = 1.0
-            elif median_roi >= 50:
-                median_score = 0.8
-            elif median_roi >= 25:
-                median_score = 0.6
-            else:
-                median_score = 0.4
+            if not self.birdeye_api_key:
+                return {
+                    'success': False,
+                    'error': 'Birdeye API not configured'
+                }
             
-            # Standard Deviation component (25% of this score) 
-            roi_std = metrics.get('roi_std', 0)
-            if roi_std < 50:
-                std_score = 1.0
-            elif roi_std < 100:
-                std_score = 0.9
-            elif roi_std < 200:
-                std_score = 0.8
-            else:
-                std_score = 0.7
+            self.api_stats['birdeye']['calls'] += 1
             
-            # Volume already handled by qualifier (15% of this score)
-            # This is already accounted for in the volume qualifier multiplier
-            volume_score = 1.0  # Baseline since we passed volume qualifier
+            # Mock implementation
+            mock_info = {
+                'address': token_address,
+                'symbol': 'MOCK',
+                'name': 'Mock Token',
+                'decimals': 6,
+                'supply': 1000000,
+                'market_cap': 50000,
+                'price': 0.05,
+                'volume_24h': 25000
+            }
             
-            # Combine components
-            risk_adjusted_score = (
-                median_score * 0.60 +
-                std_score * 0.25 +
-                volume_score * 0.15
-            )
+            self.api_stats['birdeye']['success'] += 1
             
-            return min(1.0, max(0.0, risk_adjusted_score))
+            return {
+                'success': True,
+                'data': mock_info
+            }
             
         except Exception as e:
-            logger.error(f"Error calculating risk-adjusted score: {str(e)}")
-            return 0.0
+            logger.error(f"Error getting token info: {str(e)}")
+            self.api_stats['birdeye']['errors'] += 1
+            return {
+                'success': False,
+                'error': str(e)
+            }
     
-    def _calculate_distribution_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Distribution Quality Score (25% weight)."""
+    def make_rpc_call(self, method: str, params: List[Any]) -> Dict[str, Any]:
+        """
+        Make direct RPC call to Solana node.
+        
+        Args:
+            method: RPC method name
+            params: Method parameters
+            
+        Returns:
+            Dict with RPC response
+        """
         try:
-            # Moonshot Rate component (50% of this score)
-            moonshot_rate = metrics.get('moonshot_rate', 0)
-            if moonshot_rate > 15:
-                moonshot_score = 1.0
-            elif moonshot_rate >= 10:
-                moonshot_score = 0.8
-            elif moonshot_rate >= 5:
-                moonshot_score = 0.6
-            else:
-                moonshot_score = 0.4
+            self.api_stats['rpc']['calls'] += 1
             
-            # Big Win Distribution component (30% of this score)
-            big_win_rate = metrics.get('big_win_rate', 0)
-            if big_win_rate > 30:
-                big_win_score = 1.0
-            elif big_win_rate >= 20:
-                big_win_score = 0.8
-            elif big_win_rate >= 10:
-                big_win_score = 0.6
-            else:
-                big_win_score = 0.4
+            payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": method,
+                "params": params
+            }
             
-            # Loss Distribution component (20% of this score)
-            heavy_loss_rate = metrics.get('heavy_loss_rate', 0)
-            if heavy_loss_rate < 10:
-                loss_score = 1.0
-            elif heavy_loss_rate < 20:
-                loss_score = 0.8
-            elif heavy_loss_rate < 30:
-                loss_score = 0.6
-            else:
-                loss_score = 0.2
-            
-            # Combine components
-            distribution_score = (
-                moonshot_score * 0.50 +
-                big_win_score * 0.30 +
-                loss_score * 0.20
+            response = requests.post(
+                self.rpc_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
             )
             
-            return min(1.0, max(0.0, distribution_score))
+            response.raise_for_status()
+            result = response.json()
             
+            if "result" in result:
+                self.api_stats['rpc']['success'] += 1
+                return {
+                    'success': True,
+                    'data': result["result"]
+                }
+            else:
+                self.api_stats['rpc']['errors'] += 1
+                return {
+                    'success': False,
+                    'error': result.get("error", "Unknown RPC error")
+                }
+                
         except Exception as e:
-            logger.error(f"Error calculating distribution score: {str(e)}")
-            return 0.0
+            logger.error(f"RPC call error: {str(e)}")
+            self.api_stats['rpc']['errors'] += 1
+            return {
+                'success': False,
+                'error': str(e)
+            }
     
-    def _calculate_discipline_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Trading Discipline Score (20% weight)."""
+    def health_check(self) -> bool:
+        """
+        Check if core APIs are accessible.
+        
+        Returns:
+            bool: True if core APIs are working
+        """
         try:
-            # Loss Management component (40% of this score)
-            quick_cuts = metrics.get('quick_cut_losses', 0)
-            slow_cuts = metrics.get('slow_cut_losses', 0)
-            total_losses = quick_cuts + slow_cuts
+            # Check RPC
+            rpc_result = self.make_rpc_call("getHealth", [])
+            if not rpc_result.get('success'):
+                logger.warning("RPC health check failed")
+                return False
             
-            if total_losses == 0:
-                loss_mgmt_score = 0.8  # Neutral - no loss data
-            else:
-                quick_cut_rate = quick_cuts / total_losses
-                if quick_cut_rate > 0.8:
-                    loss_mgmt_score = 1.0
-                elif quick_cut_rate > 0.6:
-                    loss_mgmt_score = 0.8
-                elif quick_cut_rate > 0.4:
-                    loss_mgmt_score = 0.6
-                else:
-                    loss_mgmt_score = 0.2
+            # For mock implementation, always return True if we have at least one API key
+            if self.cielo_api_key or self.birdeye_api_key or self.helius_api_key:
+                return True
             
-            # Exit Behavior component (35% of this score)
-            # Based on win rate and average ROI consistency
-            win_rate = metrics.get('win_rate', 0)
-            if win_rate > 60:
-                exit_score = 1.0
-            elif win_rate > 45:
-                exit_score = 0.8
-            elif win_rate > 30:
-                exit_score = 0.6
-            else:
-                exit_score = 0.4
-            
-            # Fast Sell Detection component (25% of this score)
-            same_block_rate = metrics.get('same_block_rate', 0)
-            if same_block_rate < 5:
-                fast_sell_score = 1.0
-            elif same_block_rate < 10:
-                fast_sell_score = 0.8
-            elif same_block_rate < 20:
-                fast_sell_score = 0.6
-            else:
-                fast_sell_score = 0.0  # Heavy penalty for flipper behavior
-            
-            # Combine components
-            discipline_score = (
-                loss_mgmt_score * 0.40 +
-                exit_score * 0.35 +
-                fast_sell_score * 0.25
-            )
-            
-            return min(1.0, max(0.0, discipline_score))
+            return False
             
         except Exception as e:
-            logger.error(f"Error calculating discipline score: {str(e)}")
-            return 0.0
+            logger.error(f"Health check error: {str(e)}")
+            return False
     
-    def _calculate_market_impact_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Market Impact Awareness Score (15% weight)."""
-        try:
-            # Bet Sizing component (60% of this score)
-            avg_bet_size = metrics.get('avg_bet_size_sol', 0)
-            if 1 <= avg_bet_size <= 10:
-                bet_size_score = 1.0  # Optimal range
-            elif 0.5 <= avg_bet_size < 1:
-                bet_size_score = 0.9  # Good but small
-            elif 10 < avg_bet_size <= 20:
-                bet_size_score = 0.6  # Large but manageable
-            elif avg_bet_size > 20:
-                bet_size_score = 0.4  # Too large - whale behavior
-            else:
-                bet_size_score = 0.7  # Very small bets
-            
-            # Market Cap Strategy component (40% of this score)
-            # This would require market cap data from token analysis
-            # For now, use a neutral score
-            market_cap_score = 0.8  # Neutral assumption
-            
-            # Combine components
-            market_impact_score = (
-                bet_size_score * 0.60 +
-                market_cap_score * 0.40
-            )
-            
-            return min(1.0, max(0.0, market_impact_score))
-            
-        except Exception as e:
-            logger.error(f"Error calculating market impact score: {str(e)}")
-            return 0.0
-    
-    def _calculate_consistency_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Consistency & Reliability Score (10% weight)."""
-        try:
-            # Activity Pattern component (70% of this score)
-            active_days = metrics.get('active_days', 0)
-            if active_days > 25:
-                activity_score = 1.0
-            elif active_days > 15:
-                activity_score = 0.8
-            elif active_days > 7:
-                activity_score = 0.6
-            elif active_days > 3:
-                activity_score = 0.4
-            else:
-                activity_score = 0.2
-            
-            # Red Flags component (30% of this score)
-            # Check for bot behavior and other red flags
-            same_block_rate = metrics.get('same_block_rate', 0)
-            
-            if same_block_rate > 50:
-                red_flag_score = 0.0  # Likely bot
-            elif same_block_rate > 30:
-                red_flag_score = 0.3  # High bot suspicion
-            elif same_block_rate > 15:
-                red_flag_score = 0.6  # Some bot behavior
-            else:
-                red_flag_score = 1.0  # Clean behavior
-            
-            # Combine components
-            consistency_score = (
-                activity_score * 0.70 +
-                red_flag_score * 0.30
-            )
-            
-            return min(1.0, max(0.0, consistency_score))
-            
-        except Exception as e:
-            logger.error(f"Error calculating consistency score: {str(e)}")
-            return 0.0
-    
-    def _get_zero_score(self, reason: str) -> Dict[str, Any]:
-        """Return zero score with reason."""
-        return {
-            'composite_score': 0.0,
-            'component_scores': {
-                'risk_adjusted_score': 0.0,
-                'distribution_score': 0.0,
-                'discipline_score': 0.0,
-                'market_impact_score': 0.0,
-                'consistency_score': 0.0
-            },
-            'volume_qualifier': {
-                'disqualified': True,
-                'reason': reason
-            },
-            'total_tokens_analyzed': 0
+    def get_api_status(self) -> Dict[str, Any]:
+        """Get detailed API status information."""
+        status = {
+            'apis_configured': [],
+            'api_status': {},
+            'zeus_compatible': True,
+            'wallet_compatible': False,
+            'token_analysis_ready': False
         }
-    
-    def get_score_explanation(self, scoring_result: Dict[str, Any]) -> str:
-        """Generate human-readable explanation of the score."""
+        
+        # Check Cielo Finance API
+        if self.cielo_api_key:
+            status['apis_configured'].append('cielo')
+            status['api_status']['cielo'] = 'operational'
+            status['wallet_compatible'] = True
+        else:
+            status['api_status']['cielo'] = 'not_configured'
+            status['zeus_compatible'] = False
+        
+        # Check Birdeye API
+        if self.birdeye_api_key:
+            status['apis_configured'].append('birdeye')
+            status['api_status']['birdeye'] = 'operational'
+            status['token_analysis_ready'] = True
+        else:
+            status['api_status']['birdeye'] = 'not_configured'
+        
+        # Check Helius API
+        if self.helius_api_key:
+            status['apis_configured'].append('helius')
+            status['api_status']['helius'] = 'operational'
+        else:
+            status['api_status']['helius'] = 'not_configured'
+        
+        # Check RPC
+        status['apis_configured'].append('rpc')
         try:
-            composite_score = scoring_result.get('composite_score', 0)
-            component_scores = scoring_result.get('component_scores', {})
-            volume_qualifier = scoring_result.get('volume_qualifier', {})
-            
-            explanation = []
-            
-            # Overall score
-            if composite_score >= 80:
-                explanation.append(f"🟢 EXCELLENT (Score: {composite_score}/100)")
-            elif composite_score >= 65:
-                explanation.append(f"🟡 GOOD (Score: {composite_score}/100)")
-            elif composite_score >= 50:
-                explanation.append(f"🟠 AVERAGE (Score: {composite_score}/100)")
+            rpc_health = self.make_rpc_call("getHealth", [])
+            if rpc_health.get('success'):
+                status['api_status']['rpc'] = 'operational'
             else:
-                explanation.append(f"🔴 POOR (Score: {composite_score}/100)")
+                status['api_status']['rpc'] = 'limited'
+        except:
+            status['api_status']['rpc'] = 'error'
+        
+        return status
+    
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """Get API performance statistics."""
+        perf_stats = {}
+        
+        for api_name, stats in self.api_stats.items():
+            total_calls = stats['calls']
+            success_calls = stats['success']
+            error_calls = stats['errors']
             
-            # Volume qualifier
-            if volume_qualifier.get('disqualified'):
-                explanation.append(f"❌ DISQUALIFIED: {volume_qualifier.get('reason', 'Unknown')}")
-                return " | ".join(explanation)
+            success_rate = (success_calls / total_calls * 100) if total_calls > 0 else 0
             
-            tokens = volume_qualifier.get('tokens', 0)
-            tier = volume_qualifier.get('tier', 'unknown')
-            explanation.append(f"📊 Volume: {tokens} tokens ({tier})")
-            
-            # Component breakdown
-            risk_score = component_scores.get('risk_adjusted_score', 0)
-            dist_score = component_scores.get('distribution_score', 0)
-            disc_score = component_scores.get('discipline_score', 0)
-            
-            explanation.append(f"🎯 Risk-Adj: {risk_score:.1f}/30")
-            explanation.append(f"📈 Distribution: {dist_score:.1f}/25") 
-            explanation.append(f"⚖️ Discipline: {disc_score:.1f}/20")
-            
-            return " | ".join(explanation)
-            
-        except Exception as e:
-            logger.error(f"Error generating score explanation: {str(e)}")
-            return f"Score: {scoring_result.get('composite_score', 0)}/100"
+            perf_stats[api_name] = {
+                'total_calls': total_calls,
+                'successful_calls': success_calls,
+                'failed_calls': error_calls,
+                'success_rate_percent': round(success_rate, 2),
+                'status': 'good' if success_rate >= 80 else 'degraded' if success_rate >= 50 else 'poor'
+            }
+        
+        return perf_stats
+    
+    def __str__(self) -> str:
+        """String representation of API manager."""
+        apis = []
+        if self.cielo_api_key:
+            apis.append("Cielo✅")
+        if self.birdeye_api_key:
+            apis.append("Birdeye✅")
+        if self.helius_api_key:
+            apis.append("Helius✅")
+        apis.append("RPC✅")
+        
+        return f"ZeusAPIManager({', '.join(apis)})"

@@ -12,10 +12,10 @@
   },
   
   "api_keys": {
-    "birdeye_api_key": "",
-    "cielo_api_key": "",
-    "helius_api_key": "",
-    "solana_rpc_url": "https://api.mainnet-beta.solana.com"
+    "birdeye_api_key": "a629dacee95f494abde360eb0feb5eae",
+    "cielo_api_key": "e0dbe373-e9bb-440d-bee8-517693879bd8",
+    "helius_api_key": "479c6a03-8431-4a79-b2bd-99edd91867dd",
+    "solana_rpc_url": "http://cce3ed699d4aeb004e634221f36e87a3.p9nodes.io"
   },
   
   "analysis": {

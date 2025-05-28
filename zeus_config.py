@@ -119,19 +119,19 @@ class ZeusConfig:
         self._validate_config()
     
     def _get_default_config_path(self) -> str:
-        """Get default configuration file path."""
-        # Try multiple locations
+        """Get default configuration file path - prioritize local config."""
+        # Try multiple locations (LOCAL FIRST)
         possible_paths = [
-            os.path.expanduser("~/.zeus_config.json"),
-            os.path.join(os.getcwd(), "config", "zeus_config.json"),
-            os.path.join(os.getcwd(), "zeus_config.json")
+            os.path.join(os.getcwd(), "config", "zeus_config.json"),  # Project config FIRST
+            os.path.join(os.getcwd(), "zeus_config.json"),           # Project root
+            os.path.expanduser("~/.zeus_config.json")                # User home LAST
         ]
         
         for path in possible_paths:
             if os.path.exists(path):
                 return path
         
-        # Return first option as default
+        # Return local config as default (create if needed)
         return possible_paths[0]
     
     def _load_config(self) -> Dict[str, Any]:
