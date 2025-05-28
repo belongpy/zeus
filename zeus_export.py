@@ -3,10 +3,10 @@ Zeus Export - CSV Export with Bot Configuration - FIXED VERSION
 Exports Zeus analysis results to CSV with bot-friendly configuration format
 
 FIXES:
-- Component scores extraction bug (columns K-O showing 0's)
-- Removed error columns from successful analyses
-- Fixed volume tier extraction
-- Cleaner CSV output format
+- Component scores extraction bug (columns K-O showing 0's) ✅
+- Removed error columns from successful analyses ✅  
+- Fixed volume tier extraction ✅
+- Cleaner CSV output format ✅
 """
 
 import os
@@ -339,7 +339,7 @@ def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
             f.write(f"Failed Analyses: {len(failed_analyses)}\n")
             f.write(f"Analysis Period: 30 days\n")
             f.write(f"Minimum Token Requirement: 6 unique trades\n")
-            f.write(f"Smart Token Sampling: 5 → 10 tokens\n\n")
+            f.write(f"Enhanced Exit Analysis: 5-10 tokens deep study\n\n")
             
             # Binary decision summary
             if successful_analyses:
@@ -385,7 +385,7 @@ def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
                     f.write(f"   Follow Sells: {'✅ YES' if follow_sells else '❌ NO'}\n")
                     f.write(f"   TP Strategy: {strategy.get('tp1_percent', 0)}% / ")
                     f.write(f"{strategy.get('tp2_percent', 0)}% / {strategy.get('tp3_percent', 0)}%\n")
-                    f.write(f"   Position Size: {strategy.get('position_size_sol', '0')} SOL\n")
+                    f.write(f"   Position Size: {strategy.get('position_size_sol', '0')}\n")
                     f.write(f"   Reasoning: {strategy.get('reasoning', 'N/A')}\n")
             
             # Error analysis
@@ -451,7 +451,8 @@ def export_bot_config_json(results: Dict[str, Any], output_file: str) -> bool:
             'analysis_summary': {
                 'total_analyzed': len(successful_analyses),
                 'follow_wallets': len(follow_wallets),
-                'analysis_period_days': 30
+                'analysis_period_days': 30,
+                'enhanced_exit_analysis': True
             },
             'wallets': []
         }

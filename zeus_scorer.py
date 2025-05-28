@@ -1,6 +1,12 @@
 """
-Zeus Scorer - New Scoring System Implementation - FIXED VOLUME QUALIFIER
+Zeus Scorer - New Scoring System Implementation - UPDATED VERSION
 Implements the revised 5-component scoring system with volume qualifier
+
+FIXES:
+- Improved token analysis data processing
+- Fixed volume qualifier logic
+- Better metric extraction from real/mock data
+- More robust scoring calculations
 
 Scoring Components (0-100 scale):
 1. Risk-Adjusted Performance Score (30%)
@@ -9,7 +15,7 @@ Scoring Components (0-100 scale):
 4. Market Impact Awareness Score (15%)
 5. Consistency & Reliability Score (10%)
 
-Volume Qualifier - FIXED TIER NAMES:
+Volume Qualifier:
 - ≥6 tokens traded: 100 points (Baseline)
 - 4-5 tokens: 80 points (Emerging)
 - 2-3 tokens: 60 points (Very new)
@@ -24,7 +30,7 @@ from datetime import datetime, timedelta
 logger = logging.getLogger("zeus.scorer")
 
 class ZeusScorer:
-    """Implements the new Zeus scoring system with volume qualifier - FIXED VERSION."""
+    """Implements the new Zeus scoring system with volume qualifier - UPDATED VERSION."""
     
     def __init__(self, config: Dict[str, Any]):
         """Initialize scorer with configuration."""
@@ -56,13 +62,22 @@ class ZeusScorer:
             if not token_analysis:
                 return self._get_zero_score("No token analysis data")
             
+            logger.info(f"📊 Calculating composite score for {len(token_analysis)} tokens")
+            
             # Extract metrics from token analysis
             metrics = self._extract_metrics(token_analysis)
             
-            # Check volume qualifier first - FIXED
+            if not metrics:
+                return self._get_zero_score("Failed to extract metrics from token analysis")
+            
+            logger.info(f"Extracted metrics: {len(metrics)} fields")
+            
+            # Check volume qualifier first
             volume_qualifier = self._calculate_volume_qualifier(metrics)
             if volume_qualifier['disqualified']:
                 return self._get_zero_score(volume_qualifier['reason'])
+            
+            logger.info(f"Volume qualifier: {volume_qualifier['tier']} (×{volume_qualifier['multiplier']})")
             
             # Calculate component scores
             component_scores = {}
@@ -82,6 +97,11 @@ class ZeusScorer:
             # 5. Consistency & Reliability (10%)
             component_scores['consistency_reliability'] = self._calculate_consistency_score(metrics)
             
+            # Log component scores for debugging
+            logger.info("Component Scores (0-1 scale):")
+            for component, score in component_scores.items():
+                logger.info(f"  {component}: {score:.3f}")
+            
             # Apply volume qualifier multiplier
             volume_multiplier = volume_qualifier['multiplier']
             
@@ -98,6 +118,8 @@ class ZeusScorer:
             # Cap at 100
             composite_score = min(100, max(0, composite_score))
             
+            logger.info(f"Final composite score: {composite_score:.1f}/100")
+            
             return {
                 'composite_score': round(composite_score, 1),
                 'component_scores': {
@@ -107,7 +129,7 @@ class ZeusScorer:
                     'market_impact_score': round(component_scores['market_impact_awareness'] * 15, 1),
                     'consistency_score': round(component_scores['consistency_reliability'] * 10, 1)
                 },
-                'volume_qualifier': volume_qualifier,  # FIXED: Return full volume_qualifier object
+                'volume_qualifier': volume_qualifier,
                 'metrics_used': metrics,
                 'total_tokens_analyzed': len(token_analysis)
             }
@@ -117,35 +139,72 @@ class ZeusScorer:
             return self._get_zero_score(f"Calculation error: {str(e)}")
     
     def _extract_metrics(self, token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Extract metrics from token analysis for scoring."""
+        """Extract metrics from token analysis for scoring - IMPROVED VERSION."""
         try:
+            logger.info(f"Extracting metrics from {len(token_analysis)} token analyses")
+            
             # Filter completed trades for most metrics
             completed_trades = [t for t in token_analysis if t.get('trade_status') == 'completed']
             all_trades = token_analysis
+            
+            logger.info(f"Found {len(completed_trades)} completed trades out of {len(all_trades)} total")
             
             # Basic counts
             total_tokens = len(all_trades)
             completed_count = len(completed_trades)
             
-            # ROI metrics
-            rois = [t.get('roi_percent', 0) for t in completed_trades if t.get('roi_percent') is not None]
+            if completed_count == 0:
+                logger.warning("No completed trades found - using limited metrics")
+                return {
+                    'total_tokens': total_tokens,
+                    'completed_trades': 0,
+                    'median_roi': 0,
+                    'avg_roi': 0,
+                    'roi_std': 0,
+                    'win_rate': 0,
+                    'active_days': 1,
+                    'avg_bet_size_sol': 1,
+                    'same_block_rate': 0,
+                    'rois': []
+                }
             
-            if rois:
-                median_roi = np.median(rois)
-                avg_roi = np.mean(rois)
-                roi_std = np.std(rois)
-                max_roi = max(rois)
-                min_roi = min(rois)
-            else:
-                median_roi = avg_roi = roi_std = max_roi = min_roi = 0
+            # ROI metrics from completed trades
+            rois = []
+            for trade in completed_trades:
+                roi = trade.get('roi_percent', 0)
+                if roi is not None and isinstance(roi, (int, float)):
+                    rois.append(float(roi))
+            
+            if not rois:
+                logger.warning("No valid ROI data found")
+                rois = [0]
+            
+            logger.info(f"Extracted {len(rois)} ROI values: min={min(rois):.1f}%, max={max(rois):.1f}%")
+            
+            # Calculate ROI statistics
+            median_roi = float(np.median(rois))
+            avg_roi = float(np.mean(rois))
+            roi_std = float(np.std(rois)) if len(rois) > 1 else 0
+            max_roi = float(max(rois))
+            min_roi = float(min(rois))
             
             # Hold time metrics
-            hold_times = [t.get('hold_time_hours', 0) for t in completed_trades if t.get('hold_time_hours', 0) > 0]
-            avg_hold_time = np.mean(hold_times) if hold_times else 0
+            hold_times = []
+            for trade in completed_trades:
+                hold_time = trade.get('hold_time_hours', 0)
+                if hold_time is not None and isinstance(hold_time, (int, float)) and hold_time > 0:
+                    hold_times.append(float(hold_time))
+            
+            avg_hold_time = float(np.mean(hold_times)) if hold_times else 24.0
             
             # Bet size metrics
-            bet_sizes = [t.get('total_sol_in', 0) for t in all_trades if t.get('total_sol_in', 0) > 0]
-            avg_bet_size = np.mean(bet_sizes) if bet_sizes else 0
+            bet_sizes = []
+            for trade in all_trades:
+                bet_size = trade.get('total_sol_in', 0)
+                if bet_size is not None and isinstance(bet_size, (int, float)) and bet_size > 0:
+                    bet_sizes.append(float(bet_size))
+            
+            avg_bet_size = float(np.mean(bet_sizes)) if bet_sizes else 5.0
             
             # Distribution metrics
             moonshots = sum(1 for roi in rois if roi >= 400)  # 5x+
@@ -155,50 +214,47 @@ class ZeusScorer:
             heavy_losses = sum(1 for roi in rois if roi <= -50)  # Heavy losses
             
             # Calculate distribution percentages
-            total_completed = len(rois) if rois else 1
-            moonshot_rate = moonshots / total_completed * 100
-            big_win_rate = big_wins / total_completed * 100
-            small_win_rate = small_wins / total_completed * 100
-            small_loss_rate = small_losses / total_completed * 100
-            heavy_loss_rate = heavy_losses / total_completed * 100
+            total_completed = len(rois)
+            moonshot_rate = (moonshots / total_completed * 100) if total_completed > 0 else 0
+            big_win_rate = (big_wins / total_completed * 100) if total_completed > 0 else 0
+            small_win_rate = (small_wins / total_completed * 100) if total_completed > 0 else 0
+            small_loss_rate = (small_losses / total_completed * 100) if total_completed > 0 else 0
+            heavy_loss_rate = (heavy_losses / total_completed * 100) if total_completed > 0 else 0
             
             # Win rate
             wins = sum(1 for roi in rois if roi > 0)
-            win_rate = wins / total_completed * 100 if total_completed > 0 else 0
+            win_rate = (wins / total_completed * 100) if total_completed > 0 else 0
             
             # Same-block detection (flipper behavior)
             same_block_trades = 0
             for trade in all_trades:
-                swaps = trade.get('swaps', [])
-                if len(swaps) >= 2:
-                    # Check if buy and sell are very close in time
-                    timestamps = [s.get('timestamp', 0) for s in swaps]
-                    if max(timestamps) - min(timestamps) < 60:  # Within 1 minute
-                        same_block_trades += 1
+                hold_time = trade.get('hold_time_hours', 24)
+                if hold_time < 0.1:  # Less than 6 minutes
+                    same_block_trades += 1
             
-            same_block_rate = same_block_trades / total_tokens * 100 if total_tokens > 0 else 0
+            same_block_rate = (same_block_trades / total_tokens * 100) if total_tokens > 0 else 0
             
             # Loss cutting behavior
             quick_cut_losses = sum(1 for t in completed_trades 
-                                 if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 0) < 4)
+                                 if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 24) < 4)
             slow_cut_losses = sum(1 for t in completed_trades 
                                 if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 0) > 24 * 7)
             
-            # Activity pattern
-            if all_trades:
-                timestamps = []
-                for trade in all_trades:
-                    if trade.get('first_timestamp'):
-                        timestamps.append(trade['first_timestamp'])
-                
-                if len(timestamps) >= 2:
-                    earliest = min(timestamps)
-                    latest = max(timestamps)
-                    active_days = (latest - earliest) / 86400
-                else:
-                    active_days = 1
-            else:
-                active_days = 0
+            # Activity pattern - estimate from trade timestamps
+            active_days = 30  # Default to full analysis period
+            timestamps = []
+            for trade in all_trades:
+                first_ts = trade.get('first_timestamp', 0)
+                last_ts = trade.get('last_timestamp', 0)
+                if first_ts and last_ts:
+                    timestamps.extend([first_ts, last_ts])
+            
+            if len(timestamps) >= 2:
+                earliest = min(timestamps)
+                latest = max(timestamps)
+                active_days = max(1, (latest - earliest) / 86400)  # Convert to days
+            
+            logger.info(f"Calculated metrics: win_rate={win_rate:.1f}%, moonshot_rate={moonshot_rate:.1f}%, avg_hold_time={avg_hold_time:.1f}h")
             
             return {
                 'total_tokens': total_tokens,
@@ -228,8 +284,10 @@ class ZeusScorer:
             return {}
     
     def _calculate_volume_qualifier(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
-        """Calculate volume qualifier score and check disqualification - FIXED TIER NAMES."""
+        """Calculate volume qualifier score and check disqualification."""
         total_tokens = metrics.get('total_tokens', 0)
+        
+        logger.info(f"Volume qualifier check: {total_tokens} tokens")
         
         if total_tokens >= 6:
             return {
@@ -237,8 +295,7 @@ class ZeusScorer:
                 'qualifier_points': 100,
                 'multiplier': 1.0,
                 'disqualified': False,
-                'tier': 'baseline',  # FIXED: Proper tier name
-                'description': f'Baseline ({total_tokens} tokens)'
+                'tier': 'baseline'
             }
         elif total_tokens >= 4:
             return {
@@ -246,8 +303,7 @@ class ZeusScorer:
                 'qualifier_points': 80,
                 'multiplier': 0.8,
                 'disqualified': False,
-                'tier': 'emerging',  # FIXED: Proper tier name
-                'description': f'Emerging ({total_tokens} tokens)'
+                'tier': 'emerging'
             }
         elif total_tokens >= 2:
             return {
@@ -255,8 +311,7 @@ class ZeusScorer:
                 'qualifier_points': 60,
                 'multiplier': 0.6,
                 'disqualified': False,
-                'tier': 'very_new',  # FIXED: Proper tier name
-                'description': f'Very New ({total_tokens} tokens)'
+                'tier': 'very_new'
             }
         else:
             return {
@@ -264,13 +319,12 @@ class ZeusScorer:
                 'qualifier_points': 0,
                 'multiplier': 0.0,
                 'disqualified': True,
-                'tier': 'insufficient',  # FIXED: Proper tier name
-                'description': f'Insufficient ({total_tokens} tokens)',
+                'tier': 'insufficient',
                 'reason': f'Insufficient tokens: {total_tokens} < 2 minimum'
             }
     
     def _calculate_risk_adjusted_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Risk-Adjusted Performance Score (30% weight)."""
+        """Calculate Risk-Adjusted Performance Score (30% weight) - IMPROVED."""
         try:
             # Median ROI component (60% of this score)
             median_roi = metrics.get('median_roi', 0)
@@ -280,8 +334,10 @@ class ZeusScorer:
                 median_score = 0.8
             elif median_roi >= 25:
                 median_score = 0.6
-            else:
+            elif median_roi >= 0:
                 median_score = 0.4
+            else:
+                median_score = 0.2  # Negative median ROI
             
             # Standard Deviation component (25% of this score) 
             roi_std = metrics.get('roi_std', 0)
@@ -294,16 +350,25 @@ class ZeusScorer:
             else:
                 std_score = 0.7
             
-            # Volume already handled by qualifier (15% of this score)
-            # This is already accounted for in the volume qualifier multiplier
-            volume_score = 1.0  # Baseline since we passed volume qualifier
+            # Win rate component (15% of this score)
+            win_rate = metrics.get('win_rate', 0)
+            if win_rate > 70:
+                win_score = 1.0
+            elif win_rate > 50:
+                win_score = 0.8
+            elif win_rate > 30:
+                win_score = 0.6
+            else:
+                win_score = 0.4
             
             # Combine components
             risk_adjusted_score = (
                 median_score * 0.60 +
                 std_score * 0.25 +
-                volume_score * 0.15
+                win_score * 0.15
             )
+            
+            logger.debug(f"Risk-adjusted: median={median_score:.2f}, std={std_score:.2f}, win={win_score:.2f} → {risk_adjusted_score:.3f}")
             
             return min(1.0, max(0.0, risk_adjusted_score))
             
@@ -312,7 +377,7 @@ class ZeusScorer:
             return 0.0
     
     def _calculate_distribution_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Distribution Quality Score (25% weight)."""
+        """Calculate Distribution Quality Score (25% weight) - IMPROVED."""
         try:
             # Moonshot Rate component (50% of this score)
             moonshot_rate = metrics.get('moonshot_rate', 0)
@@ -322,8 +387,10 @@ class ZeusScorer:
                 moonshot_score = 0.8
             elif moonshot_rate >= 5:
                 moonshot_score = 0.6
-            else:
+            elif moonshot_rate > 0:
                 moonshot_score = 0.4
+            else:
+                moonshot_score = 0.2
             
             # Big Win Distribution component (30% of this score)
             big_win_rate = metrics.get('big_win_rate', 0)
@@ -333,8 +400,10 @@ class ZeusScorer:
                 big_win_score = 0.8
             elif big_win_rate >= 10:
                 big_win_score = 0.6
-            else:
+            elif big_win_rate > 0:
                 big_win_score = 0.4
+            else:
+                big_win_score = 0.2
             
             # Loss Distribution component (20% of this score)
             heavy_loss_rate = metrics.get('heavy_loss_rate', 0)
@@ -344,6 +413,8 @@ class ZeusScorer:
                 loss_score = 0.8
             elif heavy_loss_rate < 30:
                 loss_score = 0.6
+            elif heavy_loss_rate < 50:
+                loss_score = 0.4
             else:
                 loss_score = 0.2
             
@@ -354,6 +425,8 @@ class ZeusScorer:
                 loss_score * 0.20
             )
             
+            logger.debug(f"Distribution: moonshot={moonshot_score:.2f}, big_win={big_win_score:.2f}, loss={loss_score:.2f} → {distribution_score:.3f}")
+            
             return min(1.0, max(0.0, distribution_score))
             
         except Exception as e:
@@ -361,7 +434,7 @@ class ZeusScorer:
             return 0.0
     
     def _calculate_discipline_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Trading Discipline Score (20% weight)."""
+        """Calculate Trading Discipline Score (20% weight) - IMPROVED."""
         try:
             # Loss Management component (40% of this score)
             quick_cuts = metrics.get('quick_cut_losses', 0)
@@ -378,11 +451,12 @@ class ZeusScorer:
                     loss_mgmt_score = 0.8
                 elif quick_cut_rate > 0.4:
                     loss_mgmt_score = 0.6
+                elif quick_cut_rate > 0.2:
+                    loss_mgmt_score = 0.4
                 else:
                     loss_mgmt_score = 0.2
             
             # Exit Behavior component (35% of this score)
-            # Based on win rate and average ROI consistency
             win_rate = metrics.get('win_rate', 0)
             if win_rate > 60:
                 exit_score = 1.0
@@ -390,8 +464,10 @@ class ZeusScorer:
                 exit_score = 0.8
             elif win_rate > 30:
                 exit_score = 0.6
-            else:
+            elif win_rate > 15:
                 exit_score = 0.4
+            else:
+                exit_score = 0.2
             
             # Fast Sell Detection component (25% of this score)
             same_block_rate = metrics.get('same_block_rate', 0)
@@ -401,6 +477,8 @@ class ZeusScorer:
                 fast_sell_score = 0.8
             elif same_block_rate < 20:
                 fast_sell_score = 0.6
+            elif same_block_rate < 40:
+                fast_sell_score = 0.3
             else:
                 fast_sell_score = 0.0  # Heavy penalty for flipper behavior
             
@@ -411,6 +489,8 @@ class ZeusScorer:
                 fast_sell_score * 0.25
             )
             
+            logger.debug(f"Discipline: loss_mgmt={loss_mgmt_score:.2f}, exit={exit_score:.2f}, fast_sell={fast_sell_score:.2f} → {discipline_score:.3f}")
+            
             return min(1.0, max(0.0, discipline_score))
             
         except Exception as e:
@@ -418,7 +498,7 @@ class ZeusScorer:
             return 0.0
     
     def _calculate_market_impact_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Market Impact Awareness Score (15% weight)."""
+        """Calculate Market Impact Awareness Score (15% weight) - IMPROVED."""
         try:
             # Bet Sizing component (60% of this score)
             avg_bet_size = metrics.get('avg_bet_size_sol', 0)
@@ -430,19 +510,30 @@ class ZeusScorer:
                 bet_size_score = 0.6  # Large but manageable
             elif avg_bet_size > 20:
                 bet_size_score = 0.4  # Too large - whale behavior
+            elif avg_bet_size > 0:
+                bet_size_score = 0.7  # Very small bets but positive
             else:
-                bet_size_score = 0.7  # Very small bets
+                bet_size_score = 0.5  # No bet size data
             
-            # Market Cap Strategy component (40% of this score)
-            # This would require market cap data from token analysis
-            # For now, use a neutral score
-            market_cap_score = 0.8  # Neutral assumption
+            # Consistency component (40% of this score)
+            # Based on standard deviation of bet sizes - lower is better
+            roi_std = metrics.get('roi_std', 100)  # Use ROI std as proxy for consistency
+            if roi_std < 50:
+                consistency_score = 1.0
+            elif roi_std < 100:
+                consistency_score = 0.8
+            elif roi_std < 200:
+                consistency_score = 0.6
+            else:
+                consistency_score = 0.4
             
             # Combine components
             market_impact_score = (
                 bet_size_score * 0.60 +
-                market_cap_score * 0.40
+                consistency_score * 0.40
             )
+            
+            logger.debug(f"Market impact: bet_size={bet_size_score:.2f}, consistency={consistency_score:.2f} → {market_impact_score:.3f}")
             
             return min(1.0, max(0.0, market_impact_score))
             
@@ -451,7 +542,7 @@ class ZeusScorer:
             return 0.0
     
     def _calculate_consistency_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Consistency & Reliability Score (10% weight)."""
+        """Calculate Consistency & Reliability Score (10% weight) - IMPROVED."""
         try:
             # Activity Pattern component (70% of this score)
             active_days = metrics.get('active_days', 0)
@@ -463,11 +554,12 @@ class ZeusScorer:
                 activity_score = 0.6
             elif active_days > 3:
                 activity_score = 0.4
-            else:
+            elif active_days > 0:
                 activity_score = 0.2
+            else:
+                activity_score = 0.1
             
             # Red Flags component (30% of this score)
-            # Check for bot behavior and other red flags
             same_block_rate = metrics.get('same_block_rate', 0)
             
             if same_block_rate > 50:
@@ -476,6 +568,8 @@ class ZeusScorer:
                 red_flag_score = 0.3  # High bot suspicion
             elif same_block_rate > 15:
                 red_flag_score = 0.6  # Some bot behavior
+            elif same_block_rate > 5:
+                red_flag_score = 0.8  # Minimal bot behavior
             else:
                 red_flag_score = 1.0  # Clean behavior
             
@@ -484,6 +578,8 @@ class ZeusScorer:
                 activity_score * 0.70 +
                 red_flag_score * 0.30
             )
+            
+            logger.debug(f"Consistency: activity={activity_score:.2f}, red_flags={red_flag_score:.2f} → {consistency_score:.3f}")
             
             return min(1.0, max(0.0, consistency_score))
             
@@ -504,8 +600,9 @@ class ZeusScorer:
             },
             'volume_qualifier': {
                 'disqualified': True,
-                'tier': 'insufficient',  # FIXED: Proper tier name
-                'reason': reason
+                'reason': reason,
+                'tokens': 0,
+                'tier': 'insufficient'
             },
             'total_tokens_analyzed': 0
         }
@@ -536,8 +633,7 @@ class ZeusScorer:
             
             tokens = volume_qualifier.get('tokens', 0)
             tier = volume_qualifier.get('tier', 'unknown')
-            tier_desc = volume_qualifier.get('description', f'{tier} tier')
-            explanation.append(f"📊 Volume: {tier_desc}")
+            explanation.append(f"📊 Volume: {tokens} tokens ({tier})")
             
             # Component breakdown
             risk_score = component_scores.get('risk_adjusted_score', 0)
