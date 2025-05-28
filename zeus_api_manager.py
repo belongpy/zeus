@@ -31,9 +31,10 @@ class ZeusAPIManager:
             helius_api_key: Helius API key (optional)
             rpc_url: Solana RPC endpoint URL
         """
-        self.birdeye_api_key = birdeye_api_key
-        self.cielo_api_key = cielo_api_key
-        self.helius_api_key = helius_api_key
+        # Store API keys as instance variables with cleaning
+        self.birdeye_api_key = birdeye_api_key.strip() if birdeye_api_key else ""
+        self.cielo_api_key = cielo_api_key.strip() if cielo_api_key else ""
+        self.helius_api_key = helius_api_key.strip() if helius_api_key else ""
         self.rpc_url = rpc_url
         
         # For now, we'll simulate the API classes since we don't have the actual SDKs
