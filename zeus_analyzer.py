@@ -49,12 +49,7 @@ class ZeusAnalyzer:
         logger.info(f"🔍 FIXED: Starting Zeus analysis for {wallet_address[:8]}...{wallet_address[-4:]} with real timestamp detection")
         
         try:
-            # DEBUG: Step 1 - Test Cielo API connection first
-            logger.info(f"🧪 FIXED: Testing Cielo API connection...")
-            api_test = self.api_manager.test_cielo_api_connection(wallet_address)
-            logger.info(f"API Test Result: {api_test}")
-            
-            # Step 2: Get wallet trading data (REAL, not mock)
+            # Step 1: Get wallet trading data from Cielo API
             logger.info(f"📡 FIXED: Fetching real Cielo trading data...")
             wallet_data = self._get_real_wallet_trading_data(wallet_address)
             
@@ -65,20 +60,16 @@ class ZeusAnalyzer:
                     'success': False,
                     'wallet_address': wallet_address,
                     'error': f"Failed to get wallet data: {wallet_data.get('error', 'Unknown error')}",
-                    'error_type': 'DATA_FETCH_ERROR',
-                    'debug_info': {
-                        'api_test': api_test,
-                        'wallet_data_attempt': wallet_data
-                    }
+                    'error_type': 'DATA_FETCH_ERROR'
                 }
             
-            # FIXED STEP 3: Get real last transaction timestamp
+            # FIXED STEP 2: Get real last transaction timestamp
             logger.info(f"🕐 FIXED: Getting real last transaction timestamp...")
             last_tx_data = self._get_real_last_transaction_timestamp(wallet_address, wallet_data)
             
             logger.info(f"🕐 FIXED: Last transaction data: {last_tx_data}")
             
-            # Step 4: Process wallet data into token analysis format with REAL timestamps
+            # Step 3: Process wallet data into token analysis format with REAL timestamps
             logger.info(f"⚙️ FIXED: Processing wallet data with real timestamps...")
             token_analysis = self._process_real_wallet_data_with_timestamps(
                 wallet_address, 
@@ -94,14 +85,10 @@ class ZeusAnalyzer:
                     'success': False,
                     'wallet_address': wallet_address,
                     'error': 'Could not process wallet data for analysis',
-                    'error_type': 'DATA_PROCESSING_ERROR',
-                    'debug_info': {
-                        'wallet_data_source': wallet_data.get('source'),
-                        'last_tx_data': last_tx_data
-                    }
+                    'error_type': 'DATA_PROCESSING_ERROR'
                 }
             
-            # Step 5: Check minimum token requirement
+            # Step 4: Check minimum token requirement
             unique_tokens = len(token_analysis)
             logger.info(f"📈 FIXED: Found {unique_tokens} unique tokens (minimum required: {self.min_unique_tokens})")
             
@@ -114,7 +101,7 @@ class ZeusAnalyzer:
                     'unique_tokens_found': unique_tokens
                 }
             
-            # Step 6: Create analysis result structure
+            # Step 5: Create analysis result structure
             analysis_result = {
                 'success': True,
                 'token_analysis': token_analysis,
@@ -125,7 +112,7 @@ class ZeusAnalyzer:
                 'last_transaction_data': last_tx_data
             }
             
-            # Step 7: Calculate scores and binary decisions
+            # Step 6: Calculate scores and binary decisions
             logger.info(f"🎯 FIXED: Calculating composite score...")
             from zeus_scorer import ZeusScorer
             scorer = ZeusScorer(self.config)
@@ -157,7 +144,6 @@ class ZeusAnalyzer:
                 'analysis_phase': analysis_result.get('analysis_phase', 'real_data_with_timestamps'),
                 'debug_info': {
                     'data_source': wallet_data.get('source'),
-                    'api_test_result': api_test,
                     'real_timestamp_source': last_tx_data.get('source', 'unknown')
                 }
             }
@@ -172,48 +158,42 @@ class ZeusAnalyzer:
             }
     
     def _get_real_wallet_trading_data(self, wallet_address: str) -> Dict[str, Any]:
-        """Get REAL wallet trading data from Cielo API (no mock fallback unless absolutely necessary)."""
+        """Get REAL wallet trading data from Cielo API."""
         try:
             logger.info(f"📡 FIXED: Attempting to get REAL Cielo trading data for {wallet_address[:8]}...")
             
-            # First, try to get real data from Cielo Finance API
-            if hasattr(self.api_manager, 'cielo_api_key') and self.api_manager.cielo_api_key:
-                logger.info(f"🔑 FIXED: Cielo API key is configured, making API call...")
-                
-                # Call Cielo Trading Stats API
-                trading_stats = self.api_manager.get_wallet_trading_stats(wallet_address)
-                
-                logger.info(f"📊 FIXED: Cielo API response - success: {trading_stats.get('success')}")
-                if trading_stats.get('error'):
-                    logger.warning(f"⚠️ FIXED: Cielo API error: {trading_stats.get('error')}")
-                
-                if trading_stats.get('success'):
-                    cielo_data = trading_stats.get('data', {})
-                    logger.info(f"✅ FIXED: Successfully retrieved REAL Cielo Finance data")
-                    logger.info(f"🔍 FIXED: Cielo data structure: {type(cielo_data)}")
-                    
-                    if isinstance(cielo_data, dict) and cielo_data:
-                        logger.info(f"🔍 FIXED: Cielo data fields: {list(cielo_data.keys())}")
-                        
-                        # Log actual field values for debugging
-                        for key, value in list(cielo_data.items())[:10]:
-                            logger.info(f"  {key}: {type(value).__name__} = {str(value)[:150]}")
-                        
-                        return {
-                            'success': True,
-                            'data': cielo_data,
-                            'source': 'cielo_finance_real',
-                            'api_response': trading_stats
-                        }
-                    else:
-                        logger.warning(f"⚠️ FIXED: Cielo returned empty or invalid data: {cielo_data}")
-                else:
-                    logger.warning(f"❌ FIXED: Cielo Finance API failed: {trading_stats.get('error', 'Unknown error')}")
-            else:
-                logger.warning(f"❌ FIXED: Cielo Finance API key not configured")
+            # Call Cielo Trading Stats API
+            trading_stats = self.api_manager.get_wallet_trading_stats(wallet_address)
             
-            # If we get here, Cielo API failed - try other approaches
-            logger.info(f"🔄 FIXED: Cielo API unavailable, trying alternative approaches...")
+            logger.info(f"📊 FIXED: Cielo API response - success: {trading_stats.get('success')}")
+            if trading_stats.get('error'):
+                logger.warning(f"⚠️ FIXED: Cielo API error: {trading_stats.get('error')}")
+            
+            if trading_stats.get('success'):
+                cielo_data = trading_stats.get('data', {})
+                logger.info(f"✅ FIXED: Successfully retrieved REAL Cielo Finance data")
+                logger.info(f"🔍 FIXED: Cielo data structure: {type(cielo_data)}")
+                
+                if isinstance(cielo_data, dict) and cielo_data:
+                    logger.info(f"🔍 FIXED: Cielo data fields: {list(cielo_data.keys())}")
+                    
+                    # Log actual field values for debugging
+                    for key, value in list(cielo_data.items())[:10]:
+                        logger.info(f"  {key}: {type(value).__name__} = {str(value)[:150]}")
+                    
+                    return {
+                        'success': True,
+                        'data': cielo_data,
+                        'source': 'cielo_finance_real',
+                        'api_response': trading_stats
+                    }
+                else:
+                    logger.warning(f"⚠️ FIXED: Cielo returned empty or invalid data: {cielo_data}")
+            else:
+                logger.warning(f"❌ FIXED: Cielo Finance API failed: {trading_stats.get('error', 'Unknown error')}")
+            
+            # If Cielo fails, try other endpoints
+            logger.info(f"🔄 FIXED: Cielo main API unavailable, trying alternative endpoints...")
             
             # Try aggregated PnL endpoint
             if hasattr(self.api_manager, 'get_wallet_aggregated_pnl'):
@@ -243,7 +223,7 @@ class ZeusAnalyzer:
                         'api_response': token_pnl
                     }
             
-            # LAST RESORT: Use mock data for development, but log it clearly
+            # LAST RESORT: Generate mock data for development
             logger.warning(f"⚠️ FIXED: ALL REAL API CALLS FAILED - Using mock data as LAST RESORT")
             logger.warning(f"⚠️ FIXED: This should NOT happen in production with valid API keys")
             
@@ -276,7 +256,7 @@ class ZeusAnalyzer:
             if isinstance(cielo_data, dict):
                 # Check for direct timestamp fields
                 timestamp_fields = ['last_trade_timestamp', 'last_activity_timestamp', 'last_transaction_time',
-                                  'most_recent_trade', 'latest_activity', 'last_swap_time', 'updated_at']
+                                  'most_recent_trade', 'latest_activity', 'last_swap_time', 'updated_at', 'last_updated']
                 
                 for field in timestamp_fields:
                     if field in cielo_data and cielo_data[field] is not None:
@@ -353,7 +333,7 @@ class ZeusAnalyzer:
                 swaps_count = cielo_data.get('swaps_count', 0)
                 win_rate = cielo_data.get('winrate', 0)
                 
-                # High activity (>100 swaps) + good win rate suggests recent activity
+                # High activity + good win rate suggests recent activity
                 if swaps_count > 200:
                     estimated_days = 1  # Very active - likely traded recently
                 elif swaps_count > 100:
@@ -803,9 +783,7 @@ class ZeusAnalyzer:
             }
         }
     
-    # [Rest of the methods remain the same - binary decisions, exit analysis, strategy recommendations, etc.]
-    # I'll include them for completeness but they don't need timestamp fixes
-    
+    # [Binary decision methods remain the same - they don't need timestamp fixes]
     def _make_binary_decisions(self, scoring_result: Dict[str, Any], 
                              analysis_result: Dict[str, Any]) -> Dict[str, Any]:
         """Make binary decisions based on scoring and enhanced analysis."""
