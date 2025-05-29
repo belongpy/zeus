@@ -1,10 +1,10 @@
 """
-Zeus Scorer - Work with Exact Data for Scoring
-FINAL FIX:
-- Scoring system works with token analysis data (for scoring logic)
-- Export system extracts exact Cielo field values (for CSV output)
-- Keep scoring thresholds and logic unchanged
-- Focus on making scoring reliable with available data
+Zeus Scorer - Enhanced with Field Validation and Updated Thresholds
+ENHANCEMENTS:
+- Added field validation for extracted data
+- Updated pattern thresholds (5 minutes, 24 hours)
+- Enhanced error handling and data quality checks
+- Maintained core scoring logic for consistency
 """
 
 import logging
@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 logger = logging.getLogger("zeus.scorer")
 
 class ZeusScorer:
-    """Implements Zeus scoring system that works with token analysis data."""
+    """Implements Zeus scoring system with enhanced validation and updated thresholds."""
     
     def __init__(self, config: Dict[str, Any]):
         """Initialize scorer with configuration."""
@@ -31,21 +31,37 @@ class ZeusScorer:
             'consistency_reliability': 0.10
         }
         
-        logger.info("Zeus Scorer initialized for token analysis data processing")
+        # Updated thresholds
+        self.very_short_threshold_hours = 0.083  # 5 minutes
+        self.long_hold_threshold_hours = 24      # 24 hours
+        
+        logger.info("Zeus Scorer initialized with UPDATED THRESHOLDS")
+        logger.info(f"  Very short holds: <{self.very_short_threshold_hours * 60:.0f} minutes")
+        logger.info(f"  Long holds: >{self.long_hold_threshold_hours} hours")
     
     def calculate_composite_score(self, token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Calculate composite score from token analysis data."""
+        """Calculate composite score from token analysis data with validation."""
         try:
             if not token_analysis:
                 return self._get_zero_score("No token analysis data")
             
             logger.info(f"📊 Calculating composite score for {len(token_analysis)} tokens")
             
+            # Validate token analysis data
+            validation_result = self._validate_token_analysis_data(token_analysis)
+            if not validation_result['valid']:
+                logger.warning(f"⚠️ Data validation issues: {validation_result['issues']}")
+            
             # Extract metrics from token analysis data
             metrics = self._extract_token_analysis_metrics(token_analysis)
             
             if not metrics:
                 return self._get_zero_score("Failed to extract metrics from token analysis")
+            
+            # Validate extracted metrics
+            metrics_validation = self._validate_extracted_metrics(metrics)
+            if not metrics_validation['valid']:
+                logger.warning(f"⚠️ Metrics validation issues: {metrics_validation['issues']}")
             
             logger.info(f"Extracted token analysis metrics: {len(metrics)} fields")
             
@@ -65,13 +81,13 @@ class ZeusScorer:
             # 2. Distribution Quality (25%)
             component_scores['distribution_quality'] = self._calculate_distribution_score(metrics)
             
-            # 3. Trading Discipline (20%)
+            # 3. Trading Discipline (20%) - WITH UPDATED THRESHOLDS
             component_scores['trading_discipline'] = self._calculate_discipline_score(metrics)
             
             # 4. Market Impact Awareness (15%)
             component_scores['market_impact_awareness'] = self._calculate_market_impact_score(metrics)
             
-            # 5. Consistency & Reliability (10%)
+            # 5. Consistency & Reliability (10%) - WITH UPDATED THRESHOLDS
             component_scores['consistency_reliability'] = self._calculate_consistency_score(metrics)
             
             # Log component scores
@@ -108,12 +124,118 @@ class ZeusScorer:
                 },
                 'volume_qualifier': volume_qualifier,
                 'metrics_used': metrics,
-                'total_tokens_analyzed': len(token_analysis)
+                'total_tokens_analyzed': len(token_analysis),
+                'data_validation': validation_result,
+                'metrics_validation': metrics_validation,
+                'updated_thresholds': {
+                    'very_short_hours': self.very_short_threshold_hours,
+                    'long_hold_hours': self.long_hold_threshold_hours
+                }
             }
             
         except Exception as e:
             logger.error(f"Error calculating composite score: {str(e)}")
             return self._get_zero_score(f"Calculation error: {str(e)}")
+    
+    def _validate_token_analysis_data(self, token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Validate token analysis data quality."""
+        validation = {
+            'valid': True,
+            'issues': [],
+            'token_count': len(token_analysis),
+            'valid_tokens': 0,
+            'invalid_tokens': 0
+        }
+        
+        try:
+            required_fields = ['token_mint', 'roi_percent', 'trade_status', 'hold_time_hours']
+            
+            for i, token in enumerate(token_analysis):
+                token_issues = []
+                
+                # Check required fields
+                for field in required_fields:
+                    if field not in token:
+                        token_issues.append(f"missing_{field}")
+                
+                # Validate data types and ranges
+                if 'roi_percent' in token:
+                    roi = token['roi_percent']
+                    if not isinstance(roi, (int, float)) or roi < -100 or roi > 10000:
+                        token_issues.append(f"invalid_roi_{roi}")
+                
+                if 'hold_time_hours' in token:
+                    hold_time = token['hold_time_hours']
+                    if not isinstance(hold_time, (int, float)) or hold_time < 0 or hold_time > 8760:  # Max 1 year
+                        token_issues.append(f"invalid_hold_time_{hold_time}")
+                
+                if token_issues:
+                    validation['invalid_tokens'] += 1
+                    validation['issues'].extend([f"token_{i}_{issue}" for issue in token_issues])
+                else:
+                    validation['valid_tokens'] += 1
+            
+            # Overall validation
+            if validation['valid_tokens'] < len(token_analysis) * 0.7:  # At least 70% valid
+                validation['valid'] = False
+                validation['issues'].append(f"insufficient_valid_tokens_{validation['valid_tokens']}/{len(token_analysis)}")
+            
+            return validation
+            
+        except Exception as e:
+            return {
+                'valid': False,
+                'issues': [f"validation_error_{str(e)}"],
+                'token_count': len(token_analysis),
+                'valid_tokens': 0,
+                'invalid_tokens': len(token_analysis)
+            }
+    
+    def _validate_extracted_metrics(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate extracted metrics."""
+        validation = {
+            'valid': True,
+            'issues': [],
+            'metrics_count': len(metrics)
+        }
+        
+        try:
+            # Required metrics with expected ranges
+            expected_metrics = {
+                'total_tokens': (1, 100),
+                'avg_roi': (-100, 10000),
+                'roi_std': (0, 5000),
+                'win_rate': (0, 100),
+                'avg_hold_time_hours': (0, 8760),
+                'same_block_rate': (0, 100)
+            }
+            
+            for metric, (min_val, max_val) in expected_metrics.items():
+                if metric not in metrics:
+                    validation['issues'].append(f"missing_{metric}")
+                    continue
+                
+                value = metrics[metric]
+                if not isinstance(value, (int, float)):
+                    validation['issues'].append(f"invalid_type_{metric}_{type(value).__name__}")
+                elif not (min_val <= value <= max_val):
+                    validation['issues'].append(f"out_of_range_{metric}_{value}")
+            
+            # Additional validation
+            if metrics.get('completed_trades', 0) > metrics.get('total_tokens', 0):
+                validation['issues'].append("completed_trades_exceeds_total")
+            
+            if validation['issues']:
+                validation['valid'] = False
+            
+            return validation
+            
+        except Exception as e:
+            return {
+                'valid': False,
+                'issues': [f"metrics_validation_error_{str(e)}"],
+                'metrics_count': len(metrics)
+            }
     
     def _extract_token_analysis_metrics(self, token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Extract metrics from token analysis data for scoring."""
@@ -163,7 +285,7 @@ class ZeusScorer:
             max_roi = float(max(rois))
             min_roi = float(min(rois))
             
-            # Hold time metrics
+            # Hold time metrics with UPDATED THRESHOLDS
             hold_times = []
             for trade in completed_trades:
                 hold_time = trade.get('hold_time_hours', 0)
@@ -198,20 +320,25 @@ class ZeusScorer:
             wins = sum(1 for roi in rois if roi > 0)
             win_rate = (wins / total_completed * 100) if total_completed > 0 else 0
             
-            # Same-block detection (flipper behavior)
+            # Same-block detection with UPDATED THRESHOLD (flipper behavior)
             same_block_trades = 0
             for trade in all_trades:
                 hold_time = trade.get('hold_time_hours', 24)
-                if hold_time < 0.1:  # Less than 6 minutes
+                if hold_time < self.very_short_threshold_hours:  # Less than 5 minutes
                     same_block_trades += 1
             
             same_block_rate = (same_block_trades / total_tokens * 100) if total_tokens > 0 else 0
             
-            # Loss cutting behavior
+            # Loss cutting behavior with UPDATED THRESHOLDS
             quick_cut_losses = sum(1 for t in completed_trades 
                                  if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 24) < 4)
             slow_cut_losses = sum(1 for t in completed_trades 
                                 if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 0) > 24 * 7)
+            
+            # Long hold detection with UPDATED THRESHOLD
+            long_holds = sum(1 for t in all_trades 
+                           if t.get('hold_time_hours', 0) > self.long_hold_threshold_hours)
+            long_hold_rate = (long_holds / total_tokens * 100) if total_tokens > 0 else 0
             
             # Activity pattern
             active_days = 30  # Default to full analysis period
@@ -228,6 +355,7 @@ class ZeusScorer:
                 active_days = max(1, (latest - earliest) / 86400)  # Convert to days
             
             logger.info(f"Calculated metrics: win_rate={win_rate:.1f}%, avg_roi={avg_roi:.1f}%, moonshot_rate={moonshot_rate:.1f}%")
+            logger.info(f"UPDATED THRESHOLDS: same_block_rate={same_block_rate:.1f}%, long_hold_rate={long_hold_rate:.1f}%")
             
             return {
                 'total_tokens': total_tokens,
@@ -243,10 +371,12 @@ class ZeusScorer:
                 'heavy_loss_rate': heavy_loss_rate,
                 'win_rate': win_rate,
                 'same_block_rate': same_block_rate,
+                'long_hold_rate': long_hold_rate,  # NEW: Long hold detection
                 'quick_cut_losses': quick_cut_losses,
                 'slow_cut_losses': slow_cut_losses,
                 'active_days': active_days,
-                'rois': rois
+                'rois': rois,
+                'updated_thresholds_applied': True
             }
             
         except Exception as e:
@@ -404,7 +534,7 @@ class ZeusScorer:
             return 0.0
     
     def _calculate_discipline_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Trading Discipline Score (20% weight)."""
+        """Calculate Trading Discipline Score (20% weight) with UPDATED THRESHOLDS."""
         try:
             # Loss Management component (40% of this score)
             quick_cuts = metrics.get('quick_cut_losses', 0)
@@ -439,7 +569,7 @@ class ZeusScorer:
             else:
                 exit_score = 0.2
             
-            # Fast Sell Detection component (25% of this score)
+            # Fast Sell Detection component (25% of this score) - UPDATED THRESHOLD
             same_block_rate = metrics.get('same_block_rate', 0)
             if same_block_rate < 5:
                 fast_sell_score = 1.0
@@ -460,6 +590,7 @@ class ZeusScorer:
             )
             
             logger.debug(f"Discipline: loss_mgmt={loss_mgmt_score:.2f}, exit={exit_score:.2f}, fast_sell={fast_sell_score:.2f} → {discipline_score:.3f}")
+            logger.debug(f"  UPDATED: same_block_rate={same_block_rate:.1f}% (threshold <5min)")
             
             return min(1.0, max(0.0, discipline_score))
             
@@ -511,7 +642,7 @@ class ZeusScorer:
             return 0.0
     
     def _calculate_consistency_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Consistency & Reliability Score (10% weight)."""
+        """Calculate Consistency & Reliability Score (10% weight) with UPDATED THRESHOLDS."""
         try:
             # Activity Pattern component (70% of this score)
             active_days = metrics.get('active_days', 0)
@@ -528,7 +659,7 @@ class ZeusScorer:
             else:
                 activity_score = 0.1
             
-            # Red Flags component (30% of this score)
+            # Red Flags component (30% of this score) - UPDATED THRESHOLDS
             same_block_rate = metrics.get('same_block_rate', 0)
             
             if same_block_rate > 50:
@@ -549,6 +680,7 @@ class ZeusScorer:
             )
             
             logger.debug(f"Consistency: activity={activity_score:.2f}, red_flags={red_flag_score:.2f} → {consistency_score:.3f}")
+            logger.debug(f"  UPDATED: same_block_rate={same_block_rate:.1f}% (threshold <5min)")
             
             return min(1.0, max(0.0, consistency_score))
             
@@ -573,7 +705,15 @@ class ZeusScorer:
                 'tokens': 0,
                 'tier': 'insufficient'
             },
-            'total_tokens_analyzed': 0
+            'total_tokens_analyzed': 0,
+            'data_validation': {
+                'valid': False,
+                'issues': [reason]
+            },
+            'updated_thresholds': {
+                'very_short_hours': self.very_short_threshold_hours,
+                'long_hold_hours': self.long_hold_threshold_hours
+            }
         }
     
     def get_score_explanation(self, scoring_result: Dict[str, Any]) -> str:
@@ -612,6 +752,13 @@ class ZeusScorer:
             explanation.append(f"🎯 Risk-Adj: {risk_score:.1f}/30")
             explanation.append(f"📈 Distribution: {dist_score:.1f}/25") 
             explanation.append(f"⚖️ Discipline: {disc_score:.1f}/20")
+            
+            # Updated thresholds info
+            updated_thresholds = scoring_result.get('updated_thresholds', {})
+            if updated_thresholds:
+                very_short_min = updated_thresholds.get('very_short_hours', 0.083) * 60
+                long_hold_hrs = updated_thresholds.get('long_hold_hours', 24)
+                explanation.append(f"⚡ Thresholds: <{very_short_min:.0f}min | >{long_hold_hrs}h")
             
             return " | ".join(explanation)
             

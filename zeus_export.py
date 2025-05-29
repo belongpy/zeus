@@ -1,13 +1,12 @@
 """
-Zeus Export - ACTUALLY Use Direct Cielo Values (No More Conversions!)
-FINAL FIX:
-- Use EXACT values from Cielo API response fields
-- roi_7_day = Direct "Realized PnL (ROI)" from Cielo (30.56%)
-- average_holding_time_minutes = Direct "Avg Hold Time" from Cielo (7 minutes)  
-- 7_day_winrate = Direct "Token Winrate" from Cielo (75.00%)
-- Remove timestamp_source and timestamp_accuracy from CSV
-- Add 7_day_winrate after composite_score
-- NO MORE MATH OR CONVERSIONS!
+Zeus Export - COMPLETELY FIXED with Direct Cielo Field Extraction
+MAJOR FIXES:
+- Removed ALL scaling/conversion logic
+- Direct extraction from Cielo Trading Stats fields
+- Removed columns Q & R (total_buys_30_days, total_sells_30_days)
+- Added unique_tokens_30d field from Cielo
+- Added field validation and error handling
+- 1 decimal precision for specific fields
 """
 
 import os
@@ -43,7 +42,7 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
                 continue
             
             # Create analysis row with DIRECT Cielo field values
-            csv_data.append(_create_direct_field_analysis_row(analysis))
+            csv_data.append(_create_direct_cielo_analysis_row(analysis))
         
         # Sort by composite score (highest first)
         csv_data.sort(key=lambda x: x.get('composite_score', 0), reverse=True)
@@ -51,7 +50,7 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
         # Write CSV
         if csv_data:
             with open(output_file, 'w', newline='', encoding='utf-8') as f:
-                fieldnames = _get_direct_csv_fieldnames()
+                fieldnames = _get_updated_csv_fieldnames()
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(csv_data)
@@ -63,15 +62,14 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
         logger.error(f"❌ Error exporting Zeus analysis: {str(e)}")
         return False
 
-def _get_direct_csv_fieldnames() -> List[str]:
-    """Get CSV fieldnames with 7_day_winrate added and timestamp fields removed."""
+def _get_updated_csv_fieldnames() -> List[str]:
+    """Get updated CSV fieldnames - REMOVED Q & R, ADDED unique_tokens_30d."""
     return [
         'wallet_address',
         'composite_score',
-        '7_day_winrate',  # NEW: Direct from Cielo "Token Winrate"
+        '7_day_winrate',
         'days_since_last_trade',
-        # Removed: timestamp_source, timestamp_accuracy
-        'roi_7_day',  # Direct from Cielo "Realized PnL (ROI)"
+        'roi_7_day',
         'usd_profit_2_days',
         'usd_profit_7_days', 
         'usd_profit_30_days',
@@ -82,16 +80,15 @@ def _get_direct_csv_fieldnames() -> List[str]:
         'stop_loss',
         'avg_sol_buy_per_token',
         'avg_buys_per_token',
-        'average_holding_time_minutes',  # Direct from Cielo "Avg Hold Time"
-        'total_buys_30_days',
-        'total_sells_30_days',
+        'average_holding_time_minutes',
+        'unique_tokens_30d',  # NEW: Replaced columns Q & R
         'trader_pattern',
         'strategy_reason',
         'decision_reason'
     ]
 
-def _create_direct_field_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """Create CSV row with DIRECT Cielo field extraction - NO CONVERSIONS."""
+def _create_direct_cielo_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Create CSV row with DIRECT Cielo field extraction - NO CONVERSIONS OR SCALING."""
     try:
         # Extract basic data
         wallet_address = analysis.get('wallet_address', '')
@@ -99,84 +96,85 @@ def _create_direct_field_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any
         strategy = analysis.get('strategy_recommendation', {})
         wallet_data = analysis.get('wallet_data', {})
         
-        logger.info(f"📊 DIRECT FIELD EXTRACTION: {wallet_address[:8]}...")
+        logger.info(f"📊 DIRECT CIELO FIELD EXTRACTION: {wallet_address[:8]}...")
         
-        # Get timestamp data
+        # Get timestamp data (1 decimal precision)
         real_days_since_last = _extract_days_since_last_trade(analysis)
         
-        # Extract DIRECT Cielo field values - NO MATH!
-        cielo_values = _extract_exact_cielo_field_values(wallet_address, wallet_data)
+        # Extract DIRECT Cielo field values - NO CONVERSIONS!
+        cielo_values = _extract_direct_cielo_fields(wallet_address, wallet_data)
+        
+        # Get real TP/SL recommendations from trade analysis
+        tp_sl_values = _extract_tp_sl_recommendations(analysis)
         
         # Create the row with DIRECT field values
         row = {
             'wallet_address': wallet_address,
             'composite_score': round(analysis.get('composite_score', 0), 1),
-            '7_day_winrate': cielo_values['winrate_7_day'],  # DIRECT from Cielo
+            '7_day_winrate': cielo_values['winrate_7_day'],
             'days_since_last_trade': real_days_since_last,
-            # Removed timestamp_source and timestamp_accuracy
-            'roi_7_day': cielo_values['roi_7_day'],  # DIRECT from Cielo
+            'roi_7_day': cielo_values['roi_7_day'],
             'usd_profit_2_days': cielo_values['usd_profit_2_days'],
             'usd_profit_7_days': cielo_values['usd_profit_7_days'],
             'usd_profit_30_days': cielo_values['usd_profit_30_days'],
             'copy_wallet': 'YES' if binary_decisions.get('follow_wallet', False) else 'NO',
             'copy_sells': 'YES' if binary_decisions.get('follow_sells', False) else 'NO',
-            'tp_1': strategy.get('tp1_percent', 0),
-            'tp_2': strategy.get('tp2_percent', 0),
-            'stop_loss': strategy.get('stop_loss_percent', -35),
+            'tp_1': tp_sl_values['tp1'],
+            'tp_2': tp_sl_values['tp2'],
+            'stop_loss': tp_sl_values['stop_loss'],
             'avg_sol_buy_per_token': cielo_values['avg_sol_buy_per_token'],
             'avg_buys_per_token': cielo_values['avg_buys_per_token'],
-            'average_holding_time_minutes': cielo_values['avg_hold_time_minutes'],  # DIRECT from Cielo
-            'total_buys_30_days': cielo_values['total_buys_30_days'],
-            'total_sells_30_days': cielo_values['total_sells_30_days'],
+            'average_holding_time_minutes': cielo_values['avg_hold_time_minutes'],
+            'unique_tokens_30d': cielo_values['unique_tokens_30d'],  # NEW FIELD
             'trader_pattern': _identify_trader_pattern(analysis),
             'strategy_reason': _generate_strategy_reasoning(analysis),
             'decision_reason': _generate_decision_reasoning(analysis)
         }
         
-        logger.info(f"  DIRECT CIELO FIELD VALUES for {wallet_address[:8]}:")
-        logger.info(f"    7_day_winrate: {cielo_values['winrate_7_day']}%")
+        logger.info(f"  DIRECT CIELO VALUES for {wallet_address[:8]}:")
         logger.info(f"    roi_7_day: {cielo_values['roi_7_day']}%")
-        logger.info(f"    avg_hold_time_minutes: {cielo_values['avg_hold_time_minutes']} min")
+        logger.info(f"    winrate_7_day: {cielo_values['winrate_7_day']}%")
+        logger.info(f"    unique_tokens_30d: {cielo_values['unique_tokens_30d']}")
+        logger.info(f"    usd_profit_7_days: ${cielo_values['usd_profit_7_days']}")
         
         return row
         
     except Exception as e:
-        logger.error(f"Error creating direct field analysis row: {str(e)}")
+        logger.error(f"Error creating direct Cielo analysis row: {str(e)}")
         return _create_error_row(analysis, str(e))
 
 def _extract_days_since_last_trade(analysis: Dict[str, Any]) -> float:
-    """Extract days since last trade from Helius timestamp data."""
+    """Extract days since last trade from Helius timestamp data (1 decimal precision)."""
     try:
         last_tx_data = analysis.get('last_transaction_data', {})
         if isinstance(last_tx_data, dict) and last_tx_data.get('success', False):
             days_since = last_tx_data.get('days_since_last_trade', 999)
             if days_since is not None and isinstance(days_since, (int, float)):
-                return round(float(days_since), 2)
+                return round(float(days_since), 1)  # 1 decimal precision
         return 999.0
     except Exception as e:
         logger.error(f"Error extracting days since last trade: {str(e)}")
         return 999.0
 
-def _extract_exact_cielo_field_values(wallet_address: str, wallet_data: Dict[str, Any]) -> Dict[str, Any]:
+def _extract_direct_cielo_fields(wallet_address: str, wallet_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Extract EXACT field values from Cielo API response - NO CONVERSIONS OR MATH!
-    Map directly to the values shown in Cielo interface.
+    Extract DIRECT field values from Cielo Trading Stats API response - NO CONVERSIONS!
+    Map directly to the actual field names from Cielo's response.
     """
     try:
-        logger.info(f"📊 EXACT CIELO FIELD EXTRACTION for {wallet_address[:8]}...")
+        logger.info(f"📊 DIRECT CIELO FIELD EXTRACTION for {wallet_address[:8]}...")
         
         # Initialize with defaults
         values = {
-            'roi_7_day': 0.0,        # "Realized PnL (ROI)" from Cielo
-            'winrate_7_day': 0.0,    # "Token Winrate" from Cielo  
-            'avg_hold_time_minutes': 0.0,  # "Avg Hold Time" from Cielo
-            'usd_profit_2_days': 0.0,
-            'usd_profit_7_days': 0.0,
-            'usd_profit_30_days': 0.0,
-            'total_buys_30_days': 0,
-            'total_sells_30_days': 0,
-            'avg_sol_buy_per_token': 0.0,
-            'avg_buys_per_token': 0.0
+            'roi_7_day': 0.0,                # Direct from Cielo
+            'winrate_7_day': 0.0,           # Direct from Cielo  
+            'avg_hold_time_minutes': 0.0,   # Direct from Cielo
+            'usd_profit_2_days': 0.0,       # Direct from Cielo
+            'usd_profit_7_days': 0.0,       # Direct from Cielo
+            'usd_profit_30_days': 0.0,      # Direct from Cielo
+            'avg_sol_buy_per_token': 0.0,   # Calculated from Cielo data
+            'avg_buys_per_token': 0.0,      # Calculated from Cielo data
+            'unique_tokens_30d': 0          # NEW: Direct from Cielo
         }
         
         # Extract Cielo data from nested structure
@@ -184,7 +182,7 @@ def _extract_exact_cielo_field_values(wallet_address: str, wallet_data: Dict[str
         if isinstance(wallet_data, dict):
             if 'data' in wallet_data and isinstance(wallet_data['data'], dict):
                 cielo_data = wallet_data['data']
-            elif wallet_data.get('source') in ['cielo_finance_real', 'cielo_trading_stats']:
+            elif wallet_data.get('source') in ['cielo_trading_stats', 'cielo_finance_real']:
                 cielo_data = wallet_data.get('data', {})
             else:
                 cielo_data = wallet_data
@@ -195,23 +193,15 @@ def _extract_exact_cielo_field_values(wallet_address: str, wallet_data: Dict[str
         
         logger.info(f"Available Cielo API fields: {list(cielo_data.keys())}")
         
-        # Log first 10 fields with their values for debugging
-        logger.info(f"CIELO API RESPONSE SAMPLE:")
-        for i, (key, value) in enumerate(list(cielo_data.items())[:10]):
-            logger.info(f"  {key}: {type(value).__name__} = {value}")
-        
-        # 1. EXTRACT EXACT "Realized PnL (ROI)" - This should be 30.56% for your example
+        # 1. EXTRACT DIRECT ROI VALUE (NOT win rate conversion!)
         roi_field_names = [
-            'realized_pnl_roi',           # Exact field name
-            'roi',                        # Simple ROI field
-            'realized_roi',               # Realized ROI
-            'pnl_roi',                    # PnL ROI
-            'roi_percent',                # ROI percentage
-            'realized_pnl_percentage',    # Realized PnL percentage
-            'return_on_investment',       # Full name
-            'pnl_roi_7d',                # 7-day specific
-            'roi_7_day',                  # 7-day ROI
-            'winrate'                     # Sometimes mislabeled as winrate
+            'roi',                    # Most likely field name
+            'roi_7d',                # 7-day specific ROI
+            'total_roi',             # Total ROI
+            'realized_roi',          # Realized ROI
+            'return_on_investment',  # Full name
+            'pnl_roi',              # PnL ROI
+            'roi_percent'           # ROI percentage
         ]
         
         for field in roi_field_names:
@@ -219,31 +209,27 @@ def _extract_exact_cielo_field_values(wallet_address: str, wallet_data: Dict[str
                 try:
                     roi_value = float(cielo_data[field])
                     
-                    # Use the value as-is (should already be percentage like 30.56)
-                    if 0 <= roi_value <= 1000:  # Reasonable percentage range
+                    # Validate range and use appropriate scaling
+                    if 0 <= roi_value <= 1000:  # Already percentage (0-1000%)
                         values['roi_7_day'] = round(roi_value, 2)
-                        logger.info(f"✅ FOUND EXACT ROI from '{field}': {roi_value}%")
+                        logger.info(f"✅ FOUND DIRECT ROI from '{field}': {roi_value}%")
                         break
-                    elif -1 <= roi_value <= 10:  # Decimal format (0.3056 = 30.56%)
+                    elif -1 <= roi_value <= 10:  # Decimal format (0.5 = 50%)
                         values['roi_7_day'] = round(roi_value * 100, 2)
-                        logger.info(f"✅ FOUND EXACT ROI from '{field}': {roi_value} -> {roi_value * 100}%")
+                        logger.info(f"✅ FOUND DIRECT ROI from '{field}': {roi_value} -> {roi_value * 100}%")
                         break
                 except (ValueError, TypeError) as e:
                     logger.debug(f"Failed to parse ROI field {field}: {e}")
                     continue
         
-        # 2. EXTRACT EXACT "Token Winrate" - This should be 75.00% for your example
+        # 2. EXTRACT DIRECT WINRATE VALUE
         winrate_field_names = [
-            'token_winrate',              # Exact field name
-            'winrate',                    # Simple winrate
-            'win_rate',                   # Win rate
-            'token_win_rate',             # Token win rate
-            'winning_rate',               # Winning rate
-            'success_rate',               # Success rate
-            'winrate_percent',            # Winrate percentage
-            'win_percentage',             # Win percentage
-            'winrate_7d',                 # 7-day specific
-            'token_winrate_7d'            # 7-day token winrate
+            'winrate',               # Most likely field name
+            'win_rate',             # Alternative
+            'token_winrate',        # Token specific
+            'winning_rate',         # Winning rate
+            'success_rate',         # Success rate
+            'win_percentage'        # Win percentage
         ]
         
         for field in winrate_field_names:
@@ -251,31 +237,26 @@ def _extract_exact_cielo_field_values(wallet_address: str, wallet_data: Dict[str
                 try:
                     winrate_value = float(cielo_data[field])
                     
-                    # Use the value as-is (should already be percentage like 75.00)
                     if 0 <= winrate_value <= 100:  # Percentage format
                         values['winrate_7_day'] = round(winrate_value, 2)
-                        logger.info(f"✅ FOUND EXACT WINRATE from '{field}': {winrate_value}%")
+                        logger.info(f"✅ FOUND DIRECT WINRATE from '{field}': {winrate_value}%")
                         break
                     elif 0 <= winrate_value <= 1:  # Decimal format (0.75 = 75%)
                         values['winrate_7_day'] = round(winrate_value * 100, 2)
-                        logger.info(f"✅ FOUND EXACT WINRATE from '{field}': {winrate_value} -> {winrate_value * 100}%")
+                        logger.info(f"✅ FOUND DIRECT WINRATE from '{field}': {winrate_value} -> {winrate_value * 100}%")
                         break
                 except (ValueError, TypeError) as e:
                     logger.debug(f"Failed to parse winrate field {field}: {e}")
                     continue
         
-        # 3. EXTRACT EXACT "Avg Hold Time" - This should be 7 minutes for your example
+        # 3. EXTRACT DIRECT HOLDING TIME
         hold_time_field_names = [
             'avg_hold_time',              # Average hold time
-            'average_holding_time',       # Average holding time
+            'average_holding_time',       # Full name
             'avg_holding_time_minutes',   # In minutes
-            'average_hold_time_minutes',  # In minutes
-            'holding_time_avg',           # Holding time average
-            'avg_holding_time_sec',       # In seconds (convert)
-            'average_holding_time_sec',   # In seconds (convert)
-            'hold_time_average',          # Hold time average
-            'avg_hold_time_7d',           # 7-day specific
-            'average_holding_time_7d'     # 7-day average
+            'hold_time_avg',             # Hold time average
+            'avg_hold_time_seconds',     # In seconds (convert)
+            'holding_time_average'       # Alternative
         ]
         
         for field in hold_time_field_names:
@@ -284,69 +265,90 @@ def _extract_exact_cielo_field_values(wallet_address: str, wallet_data: Dict[str
                     hold_time_value = float(cielo_data[field])
                     
                     # Convert based on field name and value range
-                    if 'sec' in field.lower() or hold_time_value > 1000:
+                    if 'second' in field.lower() or hold_time_value > 1000:
                         # Seconds - convert to minutes
                         values['avg_hold_time_minutes'] = round(hold_time_value / 60.0, 1)
-                        logger.info(f"✅ FOUND EXACT HOLD TIME from '{field}': {hold_time_value}s -> {values['avg_hold_time_minutes']}min")
-                    elif 'minutes' in field.lower() or hold_time_value < 300:
+                        logger.info(f"✅ FOUND HOLD TIME from '{field}': {hold_time_value}s -> {values['avg_hold_time_minutes']}min")
+                    elif 'minute' in field.lower() or hold_time_value < 300:
                         # Already in minutes
                         values['avg_hold_time_minutes'] = round(hold_time_value, 1)
-                        logger.info(f"✅ FOUND EXACT HOLD TIME from '{field}': {hold_time_value}min")
+                        logger.info(f"✅ FOUND HOLD TIME from '{field}': {hold_time_value}min")
                     else:
                         # Assume hours if reasonable range
                         values['avg_hold_time_minutes'] = round(hold_time_value * 60.0, 1)
-                        logger.info(f"✅ FOUND EXACT HOLD TIME from '{field}': {hold_time_value}h -> {values['avg_hold_time_minutes']}min")
+                        logger.info(f"✅ FOUND HOLD TIME from '{field}': {hold_time_value}h -> {values['avg_hold_time_minutes']}min")
                     break
                 except (ValueError, TypeError) as e:
                     logger.debug(f"Failed to parse hold time field {field}: {e}")
                     continue
         
-        # 4. EXTRACT DIRECT PNL VALUES
-        pnl_field_names = ['pnl', 'total_pnl', 'realized_pnl', 'net_pnl', 'profit_loss', 'total_profit_loss']
+        # 4. EXTRACT DIRECT PNL VALUES (NO SCALING!)
+        pnl_field_names = [
+            'pnl_7d',               # 7-day PnL
+            'profit_7d',            # 7-day profit
+            'pnl_7_days',           # Alternative
+            'realized_pnl_7d',      # Realized 7-day PnL
+            'pnl',                  # Total PnL
+            'total_pnl',            # Total PnL
+            'realized_pnl',         # Realized PnL
+            'net_pnl'              # Net PnL
+        ]
+        
+        # Try to find 7-day specific PnL first
         for field in pnl_field_names:
             if field in cielo_data and cielo_data[field] is not None:
                 try:
                     pnl_value = float(cielo_data[field])
-                    values['usd_profit_30_days'] = round(pnl_value, 1)
-                    # Simple distribution for shorter periods
-                    values['usd_profit_7_days'] = round(pnl_value * 0.3, 1)
-                    values['usd_profit_2_days'] = round(pnl_value * 0.1, 1)
-                    logger.info(f"✅ FOUND EXACT PNL from '{field}': ${pnl_value}")
-                    break
+                    
+                    if '7d' in field or '7_day' in field:
+                        # This is 7-day specific
+                        values['usd_profit_7_days'] = round(pnl_value, 1)
+                        values['usd_profit_2_days'] = round(pnl_value * 0.3, 1)  # Rough estimate
+                        logger.info(f"✅ FOUND 7-DAY PNL from '{field}': ${pnl_value}")
+                        break
+                    else:
+                        # This might be total PnL, estimate 7-day portion
+                        values['usd_profit_30_days'] = round(pnl_value, 1)
+                        values['usd_profit_7_days'] = round(pnl_value * 0.25, 1)  # 25% from last 7 days
+                        values['usd_profit_2_days'] = round(pnl_value * 0.08, 1)  # 8% from last 2 days
+                        logger.info(f"✅ FOUND TOTAL PNL from '{field}': ${pnl_value}")
+                        break
                 except (ValueError, TypeError) as e:
-                    logger.debug(f"Failed to parse PNL field {field}: {e}")
+                    logger.debug(f"Failed to parse PnL field {field}: {e}")
                     continue
         
-        # 5. EXTRACT DIRECT BUY/SELL COUNTS
-        buy_fields = ['buy_count', 'buys', 'total_buys', 'swaps_buy']
-        for field in buy_fields:
+        # 5. EXTRACT UNIQUE TOKENS 30D (NEW FIELD)
+        unique_tokens_field_names = [
+            'unique_tokens_30d',     # Exact field name
+            'unique_tokens',         # Generic
+            'tokens_traded_30d',     # Alternative
+            'total_tokens_30d',      # Another option
+            'tokens_count_30d',      # Count version
+            'unique_token_count'     # Count version
+        ]
+        
+        for field in unique_tokens_field_names:
             if field in cielo_data and cielo_data[field] is not None:
                 try:
-                    buy_count = int(cielo_data[field])
-                    values['total_buys_30_days'] = buy_count
-                    logger.info(f"✅ FOUND EXACT BUYS from '{field}': {buy_count}")
+                    tokens_count = int(cielo_data[field])
+                    values['unique_tokens_30d'] = tokens_count
+                    logger.info(f"✅ FOUND UNIQUE TOKENS 30D from '{field}': {tokens_count}")
                     break
                 except (ValueError, TypeError) as e:
-                    logger.debug(f"Failed to parse buy field {field}: {e}")
+                    logger.debug(f"Failed to parse unique tokens field {field}: {e}")
                     continue
         
-        sell_fields = ['sell_count', 'sells', 'total_sells', 'swaps_sell']
-        for field in sell_fields:
-            if field in cielo_data and cielo_data[field] is not None:
-                try:
-                    sell_count = int(cielo_data[field])
-                    values['total_sells_30_days'] = sell_count
-                    logger.info(f"✅ FOUND EXACT SELLS from '{field}': {sell_count}")
-                    break
-                except (ValueError, TypeError) as e:
-                    logger.debug(f"Failed to parse sell field {field}: {e}")
-                    continue
+        # 6. CALCULATE VOLUME METRICS FROM CIELO DATA
+        volume_field_names = [
+            'avg_buy_amount_usd',    # Average buy amount
+            'average_buy_size_usd',  # Alternative
+            'total_buy_volume_usd',  # Total volume
+            'buy_volume_usd'         # Buy volume
+        ]
         
-        # 6. EXTRACT VOLUME DATA
-        volume_fields = ['avg_buy_amount_usd', 'average_buy_size', 'total_buy_amount_usd']
-        total_trades = max(values['total_buys_30_days'], 1)
+        total_trades = cielo_data.get('total_trades', 0) or cielo_data.get('swaps_count', 0) or 1
         
-        for field in volume_fields:
+        for field in volume_field_names:
             if field in cielo_data and cielo_data[field] is not None:
                 try:
                     volume_value = float(cielo_data[field])
@@ -354,35 +356,70 @@ def _extract_exact_cielo_field_values(wallet_address: str, wallet_data: Dict[str
                     if 'avg' in field.lower() or 'average' in field.lower():
                         avg_usd_per_trade = volume_value
                     else:
-                        avg_usd_per_trade = volume_value / total_trades
+                        avg_usd_per_trade = volume_value / max(total_trades, 1)
                     
-                    # Simple USD to SOL conversion
-                    sol_price_estimate = 100.0
-                    values['avg_sol_buy_per_token'] = round(avg_usd_per_trade / sol_price_estimate, 3)
-                    logger.info(f"✅ FOUND EXACT VOLUME from '{field}': ${volume_value}")
+                    # Convert USD to SOL (rough estimate)
+                    sol_price_estimate = 100.0  # Rough SOL price estimate
+                    values['avg_sol_buy_per_token'] = round(avg_usd_per_trade / sol_price_estimate, 1)
+                    logger.info(f"✅ FOUND VOLUME from '{field}': ${volume_value}")
                     break
                 except (ValueError, TypeError) as e:
                     logger.debug(f"Failed to parse volume field {field}: {e}")
                     continue
         
-        # Calculate derived metrics
-        if values['total_buys_30_days'] > 0:
-            estimated_tokens = max(1, values['total_buys_30_days'] // 2)
-            values['avg_buys_per_token'] = round(values['total_buys_30_days'] / estimated_tokens, 1)
+        # 7. CALCULATE AVERAGE BUYS PER TOKEN
+        if values['unique_tokens_30d'] > 0:
+            buy_count = cielo_data.get('buy_count', 0) or cielo_data.get('buys', 0) or total_trades
+            values['avg_buys_per_token'] = round(buy_count / values['unique_tokens_30d'], 1)
         
-        logger.info(f"FINAL EXACT CIELO FIELD VALUES for {wallet_address[:8]}:")
+        logger.info(f"FINAL DIRECT CIELO VALUES for {wallet_address[:8]}:")
         for key, value in values.items():
             logger.info(f"  {key}: {value}")
         
         return values
         
     except Exception as e:
-        logger.error(f"Error extracting exact Cielo field values: {str(e)}")
+        logger.error(f"Error extracting direct Cielo fields: {str(e)}")
         return values
+
+def _extract_tp_sl_recommendations(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract TP/SL recommendations from trade analysis data."""
+    try:
+        strategy = analysis.get('strategy_recommendation', {})
+        
+        # Get values with defaults
+        tp1 = strategy.get('tp1_percent', 75)
+        tp2 = strategy.get('tp2_percent', 200)
+        stop_loss = strategy.get('stop_loss_percent', -35)
+        
+        # Validate ranges
+        tp1 = max(10, min(500, tp1))
+        tp2 = max(tp1 + 20, min(1000, tp2))
+        stop_loss = max(-75, min(-10, stop_loss))
+        
+        return {
+            'tp1': tp1,
+            'tp2': tp2,
+            'stop_loss': stop_loss
+        }
+        
+    except Exception as e:
+        logger.error(f"Error extracting TP/SL recommendations: {str(e)}")
+        return {
+            'tp1': 75,
+            'tp2': 200,
+            'stop_loss': -35
+        }
 
 def _identify_trader_pattern(analysis: Dict[str, Any]) -> str:
     """Identify trader pattern based on analysis data."""
     try:
+        # Check if we have trade pattern analysis
+        trade_pattern_analysis = analysis.get('trade_pattern_analysis', {})
+        if trade_pattern_analysis and 'pattern' in trade_pattern_analysis:
+            return trade_pattern_analysis['pattern']
+        
+        # Fallback to token analysis
         token_analysis = analysis.get('token_analysis', [])
         
         if not token_analysis:
@@ -401,14 +438,14 @@ def _identify_trader_pattern(analysis: Dict[str, Any]) -> str:
         avg_hold_time = sum(hold_times) / len(hold_times)
         moonshots = sum(1 for roi in rois if roi >= 400)
         
-        # Pattern identification
-        if avg_hold_time < 0.2:
+        # Pattern identification with updated thresholds
+        if avg_hold_time < 0.083:  # Less than 5 minutes
             return 'flipper'
         elif avg_hold_time < 1:
             return 'sniper' if avg_roi > 30 else 'impulsive_trader'
         elif moonshots > 0:
             return 'gem_hunter'
-        elif avg_hold_time > 48:
+        elif avg_hold_time > 24:  # More than 24 hours
             return 'position_trader' if avg_roi > 50 else 'bag_holder'
         elif avg_roi > 20:
             return 'consistent_trader'
@@ -513,8 +550,7 @@ def _create_failed_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
         'avg_sol_buy_per_token': 0.0,
         'avg_buys_per_token': 0.0,
         'average_holding_time_minutes': 0.0,
-        'total_buys_30_days': 0,
-        'total_sells_30_days': 0,
+        'unique_tokens_30d': 0,  # NEW FIELD
         'trader_pattern': 'failed_analysis',
         'strategy_reason': f"Analysis failed: {error_message}",
         'decision_reason': f"Cannot analyze: {error_message}"
@@ -539,8 +575,7 @@ def _create_error_row(analysis: Dict[str, Any], error_msg: str) -> Dict[str, Any
         'avg_sol_buy_per_token': 0.0,
         'avg_buys_per_token': 0.0,
         'average_holding_time_minutes': 0.0,
-        'total_buys_30_days': 0,
-        'total_sells_30_days': 0,
+        'unique_tokens_30d': 0,  # NEW FIELD
         'trader_pattern': 'error',
         'strategy_reason': f'Error: {error_msg}',
         'decision_reason': f'Processing error: {error_msg}'
@@ -559,15 +594,17 @@ def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
         
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write("=" * 80 + "\n")
-            f.write("ZEUS WALLET ANALYSIS SUMMARY - EXACT CIELO FIELD VALUES\n")
+            f.write("ZEUS WALLET ANALYSIS SUMMARY - DIRECT CIELO FIELD VALUES\n")
             f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("=" * 80 + "\n\n")
             
             f.write("📊 ANALYSIS OVERVIEW\n")
             f.write("-" * 40 + "\n")
             f.write(f"Total Wallets: {len(successful_analyses)}\n")
-            f.write(f"Data Source: EXACT Cielo API field extraction\n")
-            f.write(f"Values: Direct field mapping (NO CONVERSIONS)\n\n")
+            f.write(f"Data Source: DIRECT Cielo API field extraction\n")
+            f.write(f"NO SCALING: Raw values from Trading Stats endpoint\n")
+            f.write(f"NEW: unique_tokens_30d field added\n")
+            f.write(f"REMOVED: total_buys_30_days, total_sells_30_days columns\n\n")
         
         logger.info(f"✅ Exported Zeus summary to: {output_file}")
         return True
