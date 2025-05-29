@@ -1,10 +1,9 @@
 """
-Zeus API Manager - FIXED with Correct Token PnL Structure and Safe Type Validation
-CRITICAL FIXES:
-- Fixed type comparison errors (int vs dict) in validation functions
-- Added proper type guards for all comparison operations
-- Safe handling of dictionary and complex field types
-- Defensive programming with try-catch blocks
+Zeus API Manager - Enhanced for Corrected Exit Analysis
+ENHANCEMENTS:
+- Enhanced Token PnL data extraction for better exit analysis
+- Improved transaction data processing for exit pattern inference
+- Added better logging for exit analysis debugging
 - Preserved all existing core functionality
 """
 
@@ -18,7 +17,7 @@ import dateutil.parser
 logger = logging.getLogger("zeus.api_manager")
 
 class ZeusAPIManager:
-    """Zeus API manager with CORRECT Token PnL analysis and SAFE field validation."""
+    """Zeus API manager with ENHANCED Token PnL analysis for corrected exit analysis."""
     
     def __init__(self, birdeye_api_key: str = "", cielo_api_key: str = "", 
                  helius_api_key: str = "", rpc_url: str = "https://api.mainnet-beta.solana.com"):
@@ -53,7 +52,7 @@ class ZeusAPIManager:
         # Request session
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Zeus-Wallet-Analyzer/2.2-Fixed-Validation',
+            'User-Agent': 'Zeus-Wallet-Analyzer/2.2-Enhanced-Exit-Analysis',
             'Accept': 'application/json'
         })
         
@@ -61,10 +60,10 @@ class ZeusAPIManager:
     
     def _initialize_apis(self):
         """Initialize API configurations with validation."""
-        logger.info("🔧 Initializing Zeus API Manager with FIXED TYPE VALIDATION...")
+        logger.info("🔧 Initializing Zeus API Manager with ENHANCED EXIT ANALYSIS...")
         
         if self.cielo_api_key:
-            logger.info("✅ Cielo Finance API key configured (Trading Stats + CORRECT Token PnL)")
+            logger.info("✅ Cielo Finance API key configured (Trading Stats + ENHANCED Token PnL)")
         else:
             logger.error("❌ CRITICAL: Cielo Finance API key missing")
             raise ValueError("Cielo Finance API key is REQUIRED")
@@ -81,7 +80,7 @@ class ZeusAPIManager:
             logger.info("⚠️ Birdeye API key not provided (limited features)")
     
     def get_last_transaction_timestamp(self, wallet_address: str) -> Dict[str, Any]:
-        """Get the REAL last transaction timestamp using Helius API."""
+        """Get the REAL last transaction timestamp using Helius API with ENHANCED transaction analysis."""
         try:
             logger.info(f"🕐 HELIUS PRIMARY: Getting real last transaction timestamp for {wallet_address[:8]}...")
             
@@ -91,7 +90,7 @@ class ZeusAPIManager:
             url = f"{self.helius_base_url}/addresses/{wallet_address}/transactions"
             params = {
                 'api-key': self.helius_api_key,
-                'limit': 10,  # Get recent 10 transactions for better accuracy
+                'limit': 15,  # ENHANCED: Get more transactions for better analysis
                 'commitment': 'confirmed'
             }
             
@@ -109,27 +108,29 @@ class ZeusAPIManager:
                 logger.info(f"✅ Helius API success - received {len(transactions)} transactions")
                 
                 if transactions and len(transactions) > 0:
-                    # Process transactions to find the most recent TRADING activity
-                    latest_trade_timestamp = self._find_latest_trading_timestamp(transactions)
+                    # ENHANCED: Process transactions for better trading activity detection
+                    trading_analysis = self._analyze_recent_trading_activity(transactions)
                     
-                    if latest_trade_timestamp:
+                    if trading_analysis['latest_trade_timestamp']:
                         current_time = int(time.time())
-                        days_since_last = max(0, (current_time - latest_trade_timestamp) / 86400)
+                        days_since_last = max(0, (current_time - trading_analysis['latest_trade_timestamp']) / 86400)
                         
                         logger.info(f"✅ HELIUS PRIMARY: Found real last trade timestamp")
-                        logger.info(f"   Timestamp: {latest_trade_timestamp}")
-                        logger.info(f"   Date: {datetime.fromtimestamp(latest_trade_timestamp)}")
+                        logger.info(f"   Timestamp: {trading_analysis['latest_trade_timestamp']}")
+                        logger.info(f"   Date: {datetime.fromtimestamp(trading_analysis['latest_trade_timestamp'])}")
                         logger.info(f"   Days ago: {days_since_last:.2f}")
+                        logger.info(f"   Trading activity: {trading_analysis['trading_activity_summary']}")
                         
                         return {
                             'success': True,
-                            'last_transaction_timestamp': latest_trade_timestamp,
+                            'last_transaction_timestamp': trading_analysis['latest_trade_timestamp'],
                             'days_since_last_trade': round(days_since_last, 1),  # 1 decimal precision
                             'transaction_count': len(transactions),
                             'source': 'helius_primary',
                             'method': 'helius_transactions_api',
                             'wallet_address': wallet_address,
-                            'timestamp_accuracy': 'high'
+                            'timestamp_accuracy': 'high',
+                            'trading_analysis': trading_analysis  # ENHANCED: Include trading activity analysis
                         }
                     else:
                         logger.warning(f"⚠️ HELIUS: No trading transactions found in recent history")
@@ -138,7 +139,8 @@ class ZeusAPIManager:
                             'error': 'No trading transactions found in recent history',
                             'transaction_count': len(transactions),
                             'source': 'helius_primary',
-                            'method': 'helius_transactions_api'
+                            'method': 'helius_transactions_api',
+                            'trading_analysis': trading_analysis
                         }
                 else:
                     logger.warning(f"⚠️ HELIUS: No transactions found for wallet {wallet_address[:8]}")
@@ -204,10 +206,22 @@ class ZeusAPIManager:
                 'source': 'helius_primary'
             }
     
-    def _find_latest_trading_timestamp(self, transactions: List[Dict[str, Any]]) -> Optional[int]:
-        """Find the latest TRADING transaction timestamp from Helius data."""
+    def _analyze_recent_trading_activity(self, transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        ENHANCED: Analyze recent trading activity for better exit pattern inference.
+        """
         try:
-            latest_trade_timestamp = None
+            analysis = {
+                'latest_trade_timestamp': None,
+                'total_trades': 0,
+                'swap_transactions': 0,
+                'buy_transactions': 0,
+                'sell_transactions': 0,
+                'trading_activity_summary': 'inactive',
+                'recent_activity_pattern': 'unknown'
+            }
+            
+            trade_timestamps = []
             
             for tx in transactions:
                 # Extract timestamp from transaction
@@ -222,52 +236,159 @@ class ZeusAPIManager:
                 if not tx_timestamp:
                     continue
                 
-                # Check if this is a trading transaction
-                if self._is_trading_transaction(tx):
-                    if latest_trade_timestamp is None or tx_timestamp > latest_trade_timestamp:
-                        latest_trade_timestamp = tx_timestamp
-                        logger.debug(f"Found trading transaction at {datetime.fromtimestamp(tx_timestamp)}")
+                # ENHANCED: Classify transaction type
+                tx_classification = self._classify_transaction_enhanced(tx)
+                
+                if tx_classification['is_trading']:
+                    analysis['total_trades'] += 1
+                    trade_timestamps.append(tx_timestamp)
+                    
+                    if tx_classification['tx_type'] == 'swap':
+                        analysis['swap_transactions'] += 1
+                    elif tx_classification['tx_type'] == 'buy':
+                        analysis['buy_transactions'] += 1
+                    elif tx_classification['tx_type'] == 'sell':
+                        analysis['sell_transactions'] += 1
+                    
+                    # Track latest trade timestamp
+                    if analysis['latest_trade_timestamp'] is None or tx_timestamp > analysis['latest_trade_timestamp']:
+                        analysis['latest_trade_timestamp'] = tx_timestamp
             
-            return latest_trade_timestamp
+            # ENHANCED: Analyze trading activity pattern
+            if analysis['total_trades'] > 0:
+                current_time = int(time.time())
+                hours_since_last = (current_time - analysis['latest_trade_timestamp']) / 3600
+                
+                if hours_since_last < 1:
+                    analysis['trading_activity_summary'] = 'very_active'
+                elif hours_since_last < 24:
+                    analysis['trading_activity_summary'] = 'active'
+                elif hours_since_last < 168:  # 1 week
+                    analysis['trading_activity_summary'] = 'recently_active'
+                else:
+                    analysis['trading_activity_summary'] = 'inactive'
+                
+                # Analyze recent activity pattern
+                if len(trade_timestamps) >= 3:
+                    # Calculate time intervals between trades
+                    intervals = []
+                    sorted_timestamps = sorted(trade_timestamps, reverse=True)
+                    for i in range(len(sorted_timestamps) - 1):
+                        interval = sorted_timestamps[i] - sorted_timestamps[i + 1]
+                        intervals.append(interval)
+                    
+                    if intervals:
+                        avg_interval = sum(intervals) / len(intervals)
+                        if avg_interval < 300:  # Less than 5 minutes
+                            analysis['recent_activity_pattern'] = 'rapid_trading'
+                        elif avg_interval < 3600:  # Less than 1 hour
+                            analysis['recent_activity_pattern'] = 'frequent_trading'
+                        elif avg_interval < 86400:  # Less than 1 day
+                            analysis['recent_activity_pattern'] = 'regular_trading'
+                        else:
+                            analysis['recent_activity_pattern'] = 'occasional_trading'
+            
+            logger.info(f"📊 ENHANCED trading activity analysis:")
+            logger.info(f"  Total trades: {analysis['total_trades']}")
+            logger.info(f"  Activity level: {analysis['trading_activity_summary']}")
+            logger.info(f"  Pattern: {analysis['recent_activity_pattern']}")
+            
+            return analysis
             
         except Exception as e:
-            logger.error(f"Error finding latest trading timestamp: {str(e)}")
-            return None
+            logger.error(f"Error analyzing recent trading activity: {str(e)}")
+            return {
+                'latest_trade_timestamp': None,
+                'total_trades': 0,
+                'trading_activity_summary': 'error',
+                'recent_activity_pattern': 'unknown'
+            }
     
-    def _is_trading_transaction(self, transaction: Dict[str, Any]) -> bool:
-        """Determine if a transaction is a trading/swap transaction."""
+    def _classify_transaction_enhanced(self, transaction: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        ENHANCED: Classify transaction type for better exit analysis.
+        """
         try:
+            classification = {
+                'is_trading': False,
+                'tx_type': 'unknown',
+                'confidence': 'low'
+            }
+            
             # Check transaction type
             tx_type = transaction.get('type', '').lower()
             if 'swap' in tx_type:
-                return True
+                classification.update({
+                    'is_trading': True,
+                    'tx_type': 'swap',
+                    'confidence': 'high'
+                })
+                return classification
             
-            # Check for known DEX programs
-            if 'accountData' in transaction:
-                for account in transaction['accountData']:
-                    account_str = str(account).lower()
-                    if any(dex in account_str for dex in ['raydium', 'jupiter', 'orca', 'serum', 'saber']):
-                        return True
+            # ENHANCED: Check for known DEX programs and instructions
+            dex_programs = {
+                '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8': 'raydium',
+                'JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo': 'jupiter',
+                '9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP': 'orca',
+                'EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o': 'serum',
+                'SSwpkEEyHdRBUNHuTw2qJC5jbTMfKu3Y5qMVBhFdHCR': 'saber'
+            }
             
-            # Check instruction data for swap indicators
+            # Check for known DEX programs in instructions
             if 'instructions' in transaction:
                 for instruction in transaction['instructions']:
                     if isinstance(instruction, dict):
                         program_id = instruction.get('programId', '')
-                        if program_id in [
-                            '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8',  # Raydium
-                            'JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo',   # Jupiter
-                            '9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP',  # Orca
-                            'EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o',  # Serum
-                        ]:
-                            return True
+                        if program_id in dex_programs:
+                            classification.update({
+                                'is_trading': True,
+                                'tx_type': 'swap',
+                                'confidence': 'high',
+                                'dex': dex_programs[program_id]
+                            })
+                            return classification
+            
+            # Check account data for trading indicators
+            if 'accountData' in transaction:
+                for account in transaction['accountData']:
+                    account_str = str(account).lower()
+                    if any(dex in account_str for dex in ['raydium', 'jupiter', 'orca', 'serum', 'saber']):
+                        classification.update({
+                            'is_trading': True,
+                            'tx_type': 'swap',
+                            'confidence': 'medium'
+                        })
+                        return classification
+            
+            # ENHANCED: Try to determine buy vs sell based on token flow
+            # This is a simplified heuristic - in practice, this would require more sophisticated analysis
+            if 'tokenTransfers' in transaction:
+                token_transfers = transaction['tokenTransfers']
+                if isinstance(token_transfers, list) and len(token_transfers) > 0:
+                    classification.update({
+                        'is_trading': True,
+                        'tx_type': 'swap',  # Default to swap for now
+                        'confidence': 'medium'
+                    })
+                    return classification
             
             # Default: assume it's a trading transaction if we can't determine otherwise
-            return True
+            # This is to be inclusive rather than miss trading activity
+            classification.update({
+                'is_trading': True,
+                'tx_type': 'unknown',
+                'confidence': 'low'
+            })
+            
+            return classification
             
         except Exception as e:
-            logger.debug(f"Error checking if transaction is trading: {str(e)}")
-            return True  # Default to True to be inclusive
+            logger.debug(f"Error classifying transaction: {str(e)}")
+            return {
+                'is_trading': True,  # Default to True to be inclusive
+                'tx_type': 'unknown',
+                'confidence': 'low'
+            }
     
     def get_wallet_trading_stats(self, wallet_address: str) -> Dict[str, Any]:
         """
@@ -431,7 +552,7 @@ class ZeusAPIManager:
     
     def get_token_pnl(self, wallet_address: str, limit: int = 5) -> Dict[str, Any]:
         """
-        Get individual token PnL data with CORRECT structure parsing (data.items[] not data.tokens[]).
+        Get individual token PnL data with ENHANCED structure parsing for exit analysis.
         Cost: 5 credits (much cheaper than Trading Stats)
         """
         try:
@@ -439,7 +560,7 @@ class ZeusAPIManager:
                 return {
                     'success': False,
                     'error': 'Cielo Finance API key not configured',
-                    'source': 'cielo_token_pnl_safe'
+                    'source': 'cielo_token_pnl_enhanced'
                 }
             
             self.api_stats['cielo_token_pnl']['calls'] += 1
@@ -449,7 +570,7 @@ class ZeusAPIManager:
             params = {'limit': limit}
             
             logger.info(f"📊 CIELO TOKEN PNL: {url} (5 credits, limit={limit})")
-            logger.info(f"🔍 Expected structure: data.items[] (CORRECTED)")
+            logger.info(f"🔍 ENHANCED for exit analysis: data.items[]")
             
             # Try different authentication methods
             auth_methods = [
@@ -476,29 +597,26 @@ class ZeusAPIManager:
                         
                         logger.info(f"✅ Cielo Token PnL API success with {auth_method}!")
                         
-                        # CORRECT structure parsing - data.items[] not data.tokens[]
-                        tokens_data = self._extract_tokens_from_correct_structure(response_data)
+                        # ENHANCED: Extract tokens with better field analysis
+                        tokens_data = self._extract_tokens_with_enhanced_analysis(response_data)
                         
-                        logger.info(f"📊 CORRECT structure - Retrieved {len(tokens_data)} token PnL records")
+                        logger.info(f"📊 ENHANCED extraction - Retrieved {len(tokens_data)} token PnL records")
                         
-                        # Log token structure for analysis
+                        # ENHANCED: Log detailed token structure for exit analysis
                         if tokens_data and len(tokens_data) > 0:
-                            sample_token = tokens_data[0]
-                            logger.info(f"🔍 SAMPLE TOKEN PNL STRUCTURE (CORRECT):")
-                            for field, value in sample_token.items():
-                                logger.info(f"  {field}: {value} ({type(value).__name__})")
+                            self._log_enhanced_token_structure(tokens_data[0])
                         
                         return {
                             'success': True,
                             'data': response_data,  # Return full response for structure analysis
-                            'tokens_extracted': tokens_data,  # CORRECT extracted tokens
-                            'source': 'cielo_token_pnl_safe',
+                            'tokens_extracted': tokens_data,  # ENHANCED extracted tokens
+                            'source': 'cielo_token_pnl_enhanced',
                             'auth_method_used': auth_method,
                             'wallet_address': wallet_address,
                             'tokens_count': len(tokens_data),
                             'credit_cost': 5,
                             'structure_used': 'data.items[]',
-                            'extraction_method': 'safe_structure_parsing'
+                            'extraction_method': 'enhanced_exit_analysis'
                         }
                     
                     elif response.status_code == 404:
@@ -507,7 +625,7 @@ class ZeusAPIManager:
                             'success': False,
                             'error': 'No token PnL data found',
                             'error_code': 404,
-                            'source': 'cielo_token_pnl_safe'
+                            'source': 'cielo_token_pnl_enhanced'
                         }
                     
                     elif response.status_code in [401, 403]:
@@ -530,7 +648,7 @@ class ZeusAPIManager:
             return {
                 'success': False,
                 'error': error_msg,
-                'source': 'cielo_token_pnl_safe'
+                'source': 'cielo_token_pnl_enhanced'
             }
             
         except Exception as e:
@@ -540,22 +658,22 @@ class ZeusAPIManager:
             return {
                 'success': False,
                 'error': error_msg,
-                'source': 'cielo_token_pnl_safe'
+                'source': 'cielo_token_pnl_enhanced'
             }
     
-    def _extract_tokens_from_correct_structure(self, response_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extract tokens from CORRECT Token PnL structure (data.items[] not data.tokens[]) with SAFE handling."""
+    def _extract_tokens_with_enhanced_analysis(self, response_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """ENHANCED: Extract tokens with better field analysis for exit patterns."""
         try:
-            logger.info(f"🔍 Safely extracting tokens from CORRECT structure...")
+            logger.info(f"🔍 ENHANCED token extraction for exit analysis...")
             
-            # CORRECT structure based on actual JSON: data.items[]
+            # Extract using known structure: data.items[]
             if isinstance(response_data, dict):
                 if 'data' in response_data:
                     data_section = response_data['data']
                     if isinstance(data_section, dict) and 'items' in data_section:
                         items = data_section['items']
                         if isinstance(items, list):
-                            logger.info(f"✅ CORRECT structure found: data.items[] with {len(items)} tokens")
+                            logger.info(f"✅ ENHANCED structure found: data.items[] with {len(items)} tokens")
                             return items
                     elif isinstance(data_section, list):
                         logger.info(f"✅ Found data as direct array with {len(data_section)} tokens")
@@ -567,18 +685,62 @@ class ZeusAPIManager:
                         logger.info(f"✅ Found tokens in {key} with {len(response_data[key])} items")
                         return response_data[key]
             
-            logger.warning(f"❌ No tokens found in CORRECT structure")
+            logger.warning(f"❌ No tokens found in ENHANCED extraction")
             logger.warning(f"Available keys: {list(response_data.keys()) if isinstance(response_data, dict) else 'not dict'}")
             return []
             
         except Exception as e:
-            logger.error(f"Error safely extracting tokens from CORRECT structure: {str(e)}")
+            logger.error(f"Error in ENHANCED token extraction: {str(e)}")
             return []
+    
+    def _log_enhanced_token_structure(self, sample_token: Dict[str, Any]) -> None:
+        """ENHANCED: Log token structure for exit analysis debugging."""
+        try:
+            logger.info(f"🔍 ENHANCED TOKEN STRUCTURE for exit analysis:")
+            
+            # Key fields for exit analysis
+            exit_analysis_fields = [
+                'roi_percentage',
+                'total_pnl_usd',
+                'holding_time_seconds',
+                'num_swaps',
+                'entry_price',
+                'exit_price',
+                'buy_amount',
+                'sell_amount',
+                'token_symbol',
+                'token_address'
+            ]
+            
+            for field in exit_analysis_fields:
+                if field in sample_token:
+                    value = sample_token[field]
+                    logger.info(f"  {field}: {value} ({type(value).__name__}) ✅")
+                else:
+                    logger.info(f"  {field}: NOT FOUND ❌")
+            
+            # Log all available fields
+            logger.info(f"  All available fields: {list(sample_token.keys())}")
+            
+            # ENHANCED: Estimate exit analysis capability
+            exit_analysis_score = 0
+            if 'roi_percentage' in sample_token:
+                exit_analysis_score += 25
+            if 'holding_time_seconds' in sample_token:
+                exit_analysis_score += 25
+            if 'num_swaps' in sample_token:
+                exit_analysis_score += 30
+            if 'total_pnl_usd' in sample_token:
+                exit_analysis_score += 20
+            
+            logger.info(f"  Exit Analysis Capability: {exit_analysis_score}%")
+            
+        except Exception as e:
+            logger.error(f"Error logging enhanced token structure: {str(e)}")
     
     def _validate_trading_stats_fields_safe(self, trading_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         SAFELY validate Trading Stats fields with proper type checking.
-        CRITICAL FIX: No more type comparison errors!
         """
         validation = {
             'valid_fields': [],
@@ -741,7 +903,8 @@ class ZeusAPIManager:
             'wallet_compatible': False,
             'token_analysis_ready': False,
             'timestamp_accuracy': 'none',
-            'field_extraction_method': 'safe_direct_mapping'
+            'field_extraction_method': 'safe_direct_mapping',
+            'exit_analysis_enhanced': True
         }
         
         # Check REQUIRED APIs
@@ -774,8 +937,9 @@ class ZeusAPIManager:
         if self.cielo_api_key and self.helius_api_key:
             status['wallet_compatible'] = True
             status['timestamp_accuracy'] = 'high'
-            status['token_pnl_structure'] = 'data.items[] (CORRECT)'
-            status['field_extraction'] = 'safe_direct_mapping (FIXED)'
+            status['token_pnl_structure'] = 'data.items[] (ENHANCED)'
+            status['field_extraction'] = 'safe_direct_mapping (ENHANCED)'
+            status['exit_analysis'] = 'enhanced_pattern_inference'
         elif self.cielo_api_key:
             status['wallet_compatible'] = True
             status['timestamp_accuracy'] = 'low'
@@ -804,9 +968,9 @@ class ZeusAPIManager:
         return perf_stats
     
     def test_helius_connection(self, test_wallet: str = "DhDiCRqc4BAojxUDzBonf7KAujejtpUryxDsuqPqGKA9") -> Dict[str, Any]:
-        """Test Helius API connection with a known wallet address."""
+        """Test Helius API connection with ENHANCED transaction analysis."""
         try:
-            logger.info(f"🧪 Testing Helius API connection with wallet: {test_wallet[:8]}...")
+            logger.info(f"🧪 Testing Helius API connection with ENHANCED analysis: {test_wallet[:8]}...")
             
             result = self.get_last_transaction_timestamp(test_wallet)
             
@@ -817,14 +981,17 @@ class ZeusAPIManager:
                     'api_working': True,
                     'timestamp_found': result.get('last_transaction_timestamp') is not None,
                     'days_since_last': result.get('days_since_last_trade', 'unknown'),
-                    'transaction_count': result.get('transaction_count', 0)
+                    'transaction_count': result.get('transaction_count', 0),
+                    'trading_analysis': result.get('trading_analysis', {}),
+                    'enhanced_features': True
                 }
             else:
                 logger.error(f"❌ Helius API connection test failed: {result.get('error', 'Unknown error')}")
                 return {
                     'connection_test': 'failed',
                     'api_working': False,
-                    'error': result.get('error', 'Unknown error')
+                    'error': result.get('error', 'Unknown error'),
+                    'enhanced_features': False
                 }
                 
         except Exception as e:
@@ -832,18 +999,19 @@ class ZeusAPIManager:
             return {
                 'connection_test': 'error',
                 'api_working': False,
-                'error': str(e)
+                'error': str(e),
+                'enhanced_features': False
             }
     
     def test_cielo_api_connection(self, test_wallet: str = "DhDiCRqc4BAojxUDzBonf7KAujejtpUryxDsuqPqGKA9") -> Dict[str, Any]:
-        """Test Cielo API connection with both Trading Stats and SAFE Token PnL structure."""
+        """Test Cielo API connection with ENHANCED Token PnL analysis."""
         try:
-            logger.info(f"🧪 Testing Cielo API connection with wallet: {test_wallet[:8]}...")
+            logger.info(f"🧪 Testing Cielo API connection with ENHANCED features: {test_wallet[:8]}...")
             
             # Test Trading Stats (30 credits)
             trading_stats_result = self.get_wallet_trading_stats(test_wallet)
             
-            # Test Token PnL with CORRECT structure (5 credits)
+            # Test Token PnL with ENHANCED analysis (5 credits)
             token_pnl_result = self.get_token_pnl(test_wallet, limit=2)
             
             if trading_stats_result.get('success') or token_pnl_result.get('success'):
@@ -859,7 +1027,8 @@ class ZeusAPIManager:
                     'token_pnl_structure': token_pnl_result.get('structure_used', 'unknown'),
                     'auth_method': trading_stats_result.get('auth_method_used', 'unknown'),
                     'field_extraction_method': 'safe_direct_mapping',
-                    'validation_safe': True
+                    'validation_safe': True,
+                    'enhanced_exit_analysis': True
                 }
             else:
                 logger.error(f"❌ Cielo API connection test failed")
@@ -867,7 +1036,8 @@ class ZeusAPIManager:
                     'connection_test': 'failed',
                     'api_working': False,
                     'trading_stats_error': trading_stats_result.get('error', 'Unknown error'),
-                    'token_pnl_error': token_pnl_result.get('error', 'Unknown error')
+                    'token_pnl_error': token_pnl_result.get('error', 'Unknown error'),
+                    'enhanced_exit_analysis': False
                 }
                 
         except Exception as e:
@@ -875,7 +1045,8 @@ class ZeusAPIManager:
             return {
                 'connection_test': 'error',
                 'api_working': False,
-                'error': str(e)
+                'error': str(e),
+                'enhanced_exit_analysis': False
             }
     
     def __str__(self) -> str:
@@ -889,4 +1060,4 @@ class ZeusAPIManager:
             apis.append("Birdeye✅")
         apis.append("RPC✅")
         
-        return f"ZeusAPIManager({', '.join(apis)}, SAFE Token PnL: data.items[], FIXED Validation)"
+        return f"ZeusAPIManager({', '.join(apis)}, ENHANCED Exit Analysis, Token PnL: data.items[])"
