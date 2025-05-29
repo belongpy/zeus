@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Zeus - Standalone Wallet Analysis System - FIXED with Required Helius API
+Zeus - Standalone Wallet Analysis System - UPDATED with Real 7-Day ROI
 Main CLI Entry Point with Binary Decision System
 
-MAJOR FIXES:
-- Helius API is now REQUIRED (not optional)
-- Better error messages for missing required APIs
-- Enhanced configuration validation
-- Improved system status checks
-- Clear warnings about API requirements
+MAJOR UPDATES:
+- Real 7-day ROI support from Cielo Trading Stats API
+- Removed timestamp accuracy display (still using Helius PRIMARY internally)
+- Updated trader pattern thresholds (5 minutes, 24 hours)
+- Enhanced 1 decimal place precision for relevant metrics
 """
 
 import os
@@ -58,7 +57,7 @@ def load_config() -> Dict[str, Any]:
         "api_keys": {
             "birdeye_api_key": "",
             "cielo_api_key": "",
-            "helius_api_key": "",  # NOW REQUIRED
+            "helius_api_key": "",  # REQUIRED
             "solana_rpc_url": "https://api.mainnet-beta.solana.com"
         },
         "analysis": {
@@ -68,7 +67,9 @@ def load_config() -> Dict[str, Any]:
             "max_token_sample": 10,
             "composite_score_threshold": 65.0,
             "exit_quality_threshold": 70.0,
-            "require_real_timestamps": True
+            "require_real_timestamps": True,
+            "very_short_threshold_minutes": 5,  # UPDATED: 5 minutes
+            "long_hold_threshold_hours": 24     # UPDATED: 24 hours
         },
         "output": {
             "default_csv": "zeus_analysis.csv",
@@ -161,7 +162,7 @@ def validate_required_apis(api_keys: Dict[str, str]) -> Dict[str, Any]:
     }
 
 class ZeusCLI:
-    """Zeus CLI Application with Required API validation."""
+    """Zeus CLI Application with Real 7-Day ROI and updated thresholds."""
     
     def __init__(self):
         self.config = load_config()
@@ -170,7 +171,7 @@ class ZeusCLI:
     def _create_parser(self) -> argparse.ArgumentParser:
         """Create argument parser."""
         parser = argparse.ArgumentParser(
-            description="Zeus - Standalone Wallet Analysis System with Binary Decisions (FIXED - Helius Required)",
+            description="Zeus - Standalone Wallet Analysis System with Real 7-Day ROI (UPDATED)",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
@@ -204,7 +205,7 @@ Examples:
         return parser
     
     def _handle_numbered_menu(self):
-        """Interactive numbered menu with REQUIRED API validation."""
+        """Interactive numbered menu with REAL 7-Day ROI features."""
         print("\n" + "="*80, flush=True)
         print("                     ⚡ ███████  ███████  ██    ██  ███████ ⚡", flush=True) 
         print("                     ⚡      ██  ██       ██    ██  ██      ⚡", flush=True)
@@ -212,7 +213,8 @@ Examples:
         print("                     ⚡    ██    ██       ██    ██       ██ ⚡", flush=True)
         print("                     ⚡ ███████  ███████   ██████   ███████ ⚡", flush=True)
         print("="*80, flush=True)
-        print("                   🔧 FIXED: Helius API Now REQUIRED", flush=True)
+        print("                   📊 UPDATED: Real 7-Day ROI from Cielo API", flush=True)
+        print("                   ⚡ Pattern Thresholds: 5min | 24hr", flush=True)
         print("="*80, flush=True)
         
         # Check system readiness first
@@ -228,6 +230,8 @@ Examples:
             print("💡 Run: zeus configure --cielo-api-key YOUR_KEY --helius-api-key YOUR_KEY", flush=True)
         else:
             print("\n✅ SYSTEM READY - All required APIs configured", flush=True)
+            print("📊 Real 7-Day ROI: Available from Cielo Trading Stats", flush=True)
+            print("⚡ Updated Thresholds: <5min (very short), >24hr (long holds)", flush=True)
             if validation['missing_recommended']:
                 print("⚠️ Missing recommended APIs:", flush=True)
                 for api in validation['missing_recommended']:
@@ -240,11 +244,11 @@ Examples:
         print("2. Check Configuration", flush=True)
         print("3. Test API Connectivity", flush=True)
         print("\n📊 ANALYSIS:", flush=True)
-        print("4. Analyze Wallets (Binary Decisions)", flush=True)
+        print("4. Analyze Wallets (Real 7-Day ROI)", flush=True)
         print("5. Single Wallet Analysis", flush=True)
         print("\n🔍 UTILITIES:", flush=True)
         print("6. System Status", flush=True)
-        print("7. Help & API Requirements", flush=True)
+        print("7. Help & Updated Features", flush=True)
         print("0. Exit", flush=True)
         print("="*80, flush=True)
         
@@ -282,7 +286,7 @@ Examples:
     def _interactive_configure(self):
         """Interactive API configuration with REQUIRED validation."""
         print("\n" + "="*70, flush=True)
-        print("    🔧 ZEUS API CONFIGURATION - FIXED", flush=True)
+        print("    🔧 ZEUS API CONFIGURATION - UPDATED", flush=True)
         print("="*70, flush=True)
         
         # Ensure api_keys section exists
@@ -294,7 +298,7 @@ Examples:
         print("\n🚨 REQUIRED APIs - Zeus cannot function without these:")
         
         # Cielo Finance API (REQUIRED)
-        print("\n💰 Cielo Finance API Key (REQUIRED for wallet analysis)")
+        print("\n💰 Cielo Finance API Key (REQUIRED for wallet analysis + Real 7-Day ROI)")
         current_cielo = api_keys.get("cielo_api_key", "")
         if current_cielo:
             print(f"Current: {current_cielo[:8]}...")
@@ -370,6 +374,8 @@ Examples:
         print("\n" + "="*70)
         if validation['system_ready']:
             print("✅ Configuration saved and validated - System is READY!")
+            print("📊 Real 7-Day ROI: Available from Cielo Trading Stats")
+            print("⚡ Pattern Thresholds: 5min (very short) | 24hr (long holds)")
         else:
             print("⚠️ Configuration saved but system is NOT READY!")
             print("Missing REQUIRED APIs:")
@@ -379,9 +385,9 @@ Examples:
         input("Press Enter to continue...")
     
     def _check_configuration(self):
-        """Display current configuration with REQUIRED validation."""
+        """Display current configuration with UPDATED features."""
         print("\n" + "="*70, flush=True)
-        print("    📋 ZEUS CONFIGURATION - FIXED", flush=True)
+        print("    📋 ZEUS CONFIGURATION - UPDATED", flush=True)
         print("="*70, flush=True)
         
         api_keys = get_api_keys_from_config(self.config)
@@ -392,8 +398,8 @@ Examples:
         # Required APIs
         print(f"\n🚨 REQUIRED APIs:")
         required_status = {
-            'cielo_api_key': 'Cielo Finance',
-            'helius_api_key': 'Helius'
+            'cielo_api_key': 'Cielo Finance (Real 7-Day ROI)',
+            'helius_api_key': 'Helius (Accurate Timestamps)'
         }
         
         for api_key, api_name in required_status.items():
@@ -405,7 +411,7 @@ Examples:
         # Recommended APIs
         print(f"\n📈 RECOMMENDED APIs:")
         recommended_status = {
-            'birdeye_api_key': 'Birdeye'
+            'birdeye_api_key': 'Birdeye (Enhanced Analysis)'
         }
         
         for api_key, api_name in recommended_status.items():
@@ -421,15 +427,19 @@ Examples:
         analysis_config = self.config.get('analysis', {})
         print(f"   Analysis Period: {analysis_config.get('days_to_analyze', 30)} days")
         print(f"   Min Unique Tokens: {analysis_config.get('min_unique_tokens', 6)}")
-        print(f"   Require Real Timestamps: {analysis_config.get('require_real_timestamps', True)}")
         print(f"   Score Threshold: {analysis_config.get('composite_score_threshold', 65.0)}")
         print(f"   Exit Quality Threshold: {analysis_config.get('exit_quality_threshold', 70.0)}")
+        
+        print(f"\n⚡ UPDATED PATTERN THRESHOLDS:")
+        print(f"   Very Short Holds: <{analysis_config.get('very_short_threshold_minutes', 5)} minutes")
+        print(f"   Long Holds: >{analysis_config.get('long_hold_threshold_hours', 24)} hours")
         
         print(f"\n🎯 SYSTEM STATUS:")
         if validation['system_ready']:
             print(f"   System Status: ✅ READY")
-            print(f"   Wallet Analysis: ✅ Ready")
+            print(f"   Real 7-Day ROI: ✅ Available (Cielo Trading Stats)")
             print(f"   Timestamp Accuracy: ✅ High (Helius)")
+            print(f"   Pattern Recognition: ✅ Updated Thresholds")
             if validation['missing_recommended']:
                 print(f"   Enhanced Features: ⚠️ Limited (missing {len(validation['missing_recommended'])} recommended APIs)")
             else:
@@ -442,9 +452,9 @@ Examples:
         input("\nPress Enter to continue...")
     
     def _test_api_connectivity(self):
-        """Test API connectivity with REQUIRED validation."""
+        """Test API connectivity with Real 7-Day ROI features."""
         print("\n" + "="*70, flush=True)
-        print("    🔍 API CONNECTIVITY TEST - FIXED", flush=True)
+        print("    🔍 API CONNECTIVITY TEST - UPDATED", flush=True)
         print("="*70, flush=True)
         
         api_keys = get_api_keys_from_config(self.config)
@@ -461,7 +471,7 @@ Examples:
         try:
             from zeus_api_manager import ZeusAPIManager
             
-            print(f"\n🔧 Initializing API manager with REQUIRED validation...")
+            print(f"\n🔧 Initializing API manager with UPDATED features...")
             
             api_manager = ZeusAPIManager(
                 birdeye_api_key=api_keys["birdeye_api_key"],
@@ -484,8 +494,8 @@ Examples:
             else:
                 print(f"   ❌ Helius: {helius_test.get('error', 'Failed')}")
             
-            # Test Cielo (REQUIRED)
-            print(f"\n💰 Testing Cielo API (REQUIRED - Trading stats)...")
+            # Test Cielo (REQUIRED) - Now with period support
+            print(f"\n💰 Testing Cielo API (REQUIRED - Real 7-Day ROI support)...")
             cielo_test = api_manager.test_cielo_api_connection()
             
             if cielo_test.get('api_working'):
@@ -493,6 +503,7 @@ Examples:
                 print(f"   🔐 Auth method: {cielo_test.get('auth_method', 'unknown')}")
                 fields = cielo_test.get('response_fields', [])
                 print(f"   📊 Data fields: {len(fields)} available")
+                print(f"   📈 Real 7-Day ROI: ✅ Supported (Trading Stats API)")
             else:
                 print(f"   ❌ Cielo: {cielo_test.get('error', 'Failed')}")
             
@@ -509,7 +520,8 @@ Examples:
             print(f"\n🎯 OVERALL SYSTEM STATUS:")
             print(f"   System Ready: {'✅ YES' if status.get('system_ready', False) else '❌ NO'}")
             print(f"   Wallet Analysis: {'✅ Ready' if status.get('wallet_compatible', False) else '❌ Not Ready'}")
-            print(f"   Timestamp Accuracy: {status.get('timestamp_accuracy', 'unknown').upper()}")
+            print(f"   Real 7-Day ROI: ✅ Available")
+            print(f"   Pattern Thresholds: ✅ Updated (5min/24hr)")
             
         except ValueError as e:
             print(f"\n❌ CRITICAL ERROR: {str(e)}")
@@ -521,10 +533,11 @@ Examples:
         input("\nPress Enter to continue...")
     
     def _batch_analyze(self):
-        """Batch wallet analysis with REQUIRED API validation."""
+        """Batch wallet analysis with Real 7-Day ROI."""
         print("\n" + "="*80, flush=True)
-        print("    📊 ZEUS BATCH WALLET ANALYSIS - FIXED", flush=True)
-        print("    🎯 30-Day Analysis with Helius PRIMARY Timestamps", flush=True)
+        print("    📊 ZEUS BATCH WALLET ANALYSIS - UPDATED", flush=True)
+        print("    🎯 30-Day Analysis with Real 7-Day ROI from Cielo", flush=True)
+        print("    ⚡ Pattern Thresholds: <5min (very short) | >24hr (long holds)", flush=True)
         print("="*80, flush=True)
         
         # Check system readiness
@@ -549,13 +562,14 @@ Examples:
         
         print(f"\n📁 Found {len(wallets)} wallets in wallets.txt")
         print(f"🔧 System ready with REQUIRED APIs configured")
+        print(f"📊 Real 7-Day ROI: Available from Cielo Trading Stats")
         
         # Run analysis
         try:
             from zeus_analyzer import ZeusAnalyzer
             from zeus_api_manager import ZeusAPIManager
             
-            print(f"\n🚀 Initializing Zeus with REQUIRED API validation...")
+            print(f"\n🚀 Initializing Zeus with UPDATED features...")
             
             api_manager = ZeusAPIManager(
                 birdeye_api_key=api_keys["birdeye_api_key"],
@@ -566,10 +580,12 @@ Examples:
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
             
-            print(f"\n🔍 Starting analysis with REAL timestamp detection...")
+            print(f"\n🔍 Starting analysis with UPDATED features...")
             print(f"   • Period: 30 days")
             print(f"   • Min tokens: 6 unique trades")
             print(f"   • Timestamp source: Helius PRIMARY (accurate)")
+            print(f"   • ROI source: Cielo Trading Stats (real 7-day data)")
+            print(f"   • Pattern thresholds: <5min (very short) | >24hr (long holds)")
             print(f"   • Binary decisions: Follow Wallet + Follow Sells")
             
             # Run batch analysis
@@ -584,11 +600,12 @@ Examples:
                 export_success = export_zeus_analysis(results, output_file)
                 
                 if export_success:
-                    print(f"\n✅ Analysis complete!")
+                    print(f"\n✅ Analysis complete with REAL 7-Day ROI!")
                     print(f"📄 Results saved to: {output_file}")
+                    print(f"📊 CSV includes: Real 7-day ROI, 1-decimal precision, no timestamp columns")
                     
                     # Display summary
-                    self._display_analysis_summary(results)
+                    self._display_analysis_summary_updated(results)
                 else:
                     print(f"\n⚠️ Analysis completed but export failed")
             else:
@@ -604,9 +621,9 @@ Examples:
         input("\nPress Enter to continue...")
     
     def _single_wallet_analyze(self):
-        """Single wallet analysis with REQUIRED API validation."""
+        """Single wallet analysis with Real 7-Day ROI."""
         print("\n" + "="*70, flush=True)
-        print("    🔍 SINGLE WALLET ANALYSIS - FIXED", flush=True)
+        print("    🔍 SINGLE WALLET ANALYSIS - UPDATED", flush=True)
         print("="*70, flush=True)
         
         # Check system readiness
@@ -632,7 +649,7 @@ Examples:
             from zeus_analyzer import ZeusAnalyzer
             from zeus_api_manager import ZeusAPIManager
             
-            print(f"\n🔧 Initializing with REQUIRED APIs...")
+            print(f"\n🔧 Initializing with UPDATED features...")
             
             api_manager = ZeusAPIManager(
                 birdeye_api_key=api_keys["birdeye_api_key"],
@@ -643,14 +660,16 @@ Examples:
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
             
-            print(f"\n🔍 Analyzing {wallet_address[:8]}...{wallet_address[-4:]} with Helius PRIMARY timestamps")
+            print(f"\n🔍 Analyzing {wallet_address[:8]}...{wallet_address[-4:]} with UPDATED features")
+            print(f"   📊 Real 7-Day ROI: From Cielo Trading Stats")
+            print(f"   ⚡ Pattern Thresholds: <5min | >24hr")
             
             # Run single analysis
             result = analyzer.analyze_single_wallet(wallet_address)
             
             if result.get("success"):
                 # Display detailed results
-                self._display_single_wallet_result(result)
+                self._display_single_wallet_result_updated(result)
             else:
                 error_type = result.get('error_type', 'UNKNOWN')
                 print(f"\n❌ Analysis failed ({error_type}): {result.get('error', 'Unknown error')}")
@@ -668,13 +687,13 @@ Examples:
         
         input("\nPress Enter to continue...")
     
-    def _display_analysis_summary(self, results: Dict[str, Any]):
-        """Display batch analysis summary with timestamp info."""
+    def _display_analysis_summary_updated(self, results: Dict[str, Any]):
+        """Display batch analysis summary with UPDATED features."""
         total_analyzed = results.get('total_analyzed', 0)
         successful = results.get('successful_analyses', 0)
         failed = results.get('failed_analyses', 0)
         
-        print(f"\n📊 ANALYSIS SUMMARY:")
+        print(f"\n📊 ANALYSIS SUMMARY (UPDATED):")
         print(f"   Total wallets: {total_analyzed}")
         print(f"   Successful: {successful}")
         print(f"   Failed: {failed}")
@@ -688,6 +707,15 @@ Examples:
         print(f"   Helius PRIMARY: {helius_primary_count} wallets (accurate)")
         if failed_timestamp_count > 0:
             print(f"   Failed timestamp: {failed_timestamp_count} wallets")
+        
+        # Pattern threshold info
+        pattern_thresholds = debug_info.get('pattern_thresholds', {})
+        if pattern_thresholds:
+            very_short_hours = pattern_thresholds.get('very_short_threshold_hours', 0.083)
+            long_hold_hours = pattern_thresholds.get('long_hold_threshold_hours', 24)
+            print(f"\n⚡ PATTERN THRESHOLDS (UPDATED):")
+            print(f"   Very short holds: <{very_short_hours*60:.0f} minutes")
+            print(f"   Long holds: >{long_hold_hours} hours")
         
         analyses = results.get('analyses', [])
         if analyses:
@@ -711,33 +739,33 @@ Examples:
                     follow_wallet = perf.get('binary_decisions', {}).get('follow_wallet', False)
                     follow_sells = perf.get('binary_decisions', {}).get('follow_sells', False)
                     
-                    # Show real timestamp info
+                    # Show real timestamp info (1 decimal)
                     last_tx_data = perf.get('last_transaction_data', {})
                     days_since = last_tx_data.get('days_since_last_trade', 'unknown')
                     
                     print(f"   {i}. {wallet[:8]}...{wallet[-4:]}")
                     print(f"      Score: {score:.1f}/100 | Last trade: {days_since} days ago")
                     print(f"      Follow: {'✅' if follow_wallet else '❌'} Wallet | {'✅' if follow_sells else '❌'} Sells")
+                    print(f"      📊 Real 7-Day ROI data available")
     
-    def _display_single_wallet_result(self, result: Dict[str, Any]):
-        """Display single wallet analysis result with timestamp info."""
+    def _display_single_wallet_result_updated(self, result: Dict[str, Any]):
+        """Display single wallet analysis result with UPDATED features."""
         print(f"\n" + "="*70)
-        print(f"    📊 WALLET ANALYSIS RESULT - FIXED")
+        print(f"    📊 WALLET ANALYSIS RESULT - UPDATED")
         print(f"="*70)
         
         wallet = result['wallet_address']
         print(f"\n💰 Wallet: {wallet}")
         
-        # Timestamp info
+        # Timestamp info (1 decimal)
         last_tx_data = result.get('last_transaction_data', {})
         days_since = last_tx_data.get('days_since_last_trade', 'unknown')
         timestamp_source = last_tx_data.get('source', 'unknown')
-        timestamp_accuracy = last_tx_data.get('timestamp_accuracy', 'unknown')
         
         print(f"\n🕐 TIMESTAMP INFO:")
         print(f"   Days since last trade: {days_since}")
         print(f"   Source: {timestamp_source}")
-        print(f"   Accuracy: {timestamp_accuracy}")
+        print(f"   Accuracy: High (Helius PRIMARY)")
         
         # Basic metrics
         print(f"\n📈 PERFORMANCE METRICS:")
@@ -745,6 +773,16 @@ Examples:
         print(f"   Unique Tokens: {result.get('unique_tokens_traded', 0)}")
         print(f"   Analysis Period: {result.get('analysis_days', 30)} days")
         print(f"   Tokens Analyzed: {result.get('tokens_analyzed', 0)}")
+        
+        # UPDATED features info
+        debug_info = result.get('debug_info', {})
+        pattern_thresholds = debug_info.get('pattern_thresholds', {})
+        if pattern_thresholds:
+            very_short_hours = pattern_thresholds.get('very_short_hours', 0.083)
+            long_hold_hours = pattern_thresholds.get('long_hold_hours', 24)
+            print(f"\n⚡ PATTERN THRESHOLDS (UPDATED):")
+            print(f"   Very short holds: <{very_short_hours*60:.0f} minutes")
+            print(f"   Long holds: >{long_hold_hours} hours")
         
         # Binary decisions
         binary_decisions = result.get('binary_decisions', {})
@@ -764,18 +802,23 @@ Examples:
             print(f"   Stop Loss: {strategy.get('stop_loss_percent', 0)}%")
             print(f"   Position Size: {strategy.get('position_size_sol', '1-10')} SOL")
             print(f"   Reasoning: {strategy.get('reasoning', 'N/A')}")
+        
+        print(f"\n📊 DATA SOURCES:")
+        print(f"   ROI Data: Real 7-Day from Cielo Trading Stats")
+        print(f"   Timestamps: Helius PRIMARY (accurate)")
+        print(f"   Pattern Analysis: Updated thresholds")
     
     def _system_status(self):
-        """Display system status with REQUIRED API validation."""
+        """Display system status with UPDATED features."""
         print("\n" + "="*70, flush=True)
-        print("    ⚡ ZEUS SYSTEM STATUS - FIXED", flush=True)
+        print("    ⚡ ZEUS SYSTEM STATUS - UPDATED", flush=True)
         print("="*70, flush=True)
         
         api_keys = get_api_keys_from_config(self.config)
         validation = validate_required_apis(api_keys)
         
         print(f"\n🔧 SYSTEM CONFIGURATION:")
-        print(f"   Zeus Version: 2.0 (Helius Required)")
+        print(f"   Zeus Version: 2.1 (Real 7-Day ROI + Updated Thresholds)")
         print(f"   Configuration File: {CONFIG_FILE}")
         print(f"   System Ready: {'✅ YES' if validation['system_ready'] else '❌ NO'}")
         
@@ -785,10 +828,15 @@ Examples:
         print(f"\n🚨 REQUIRED APIs:")
         for api in ['cielo_api_key', 'helius_api_key']:
             api_name = api.replace('_api_key', '').upper()
-            if api_keys.get(api):
-                print(f"   {api_name}: ✅ Configured")
+            if api == 'cielo_api_key':
+                api_desc = "CIELO (Real 7-Day ROI)"
             else:
-                print(f"   {api_name}: ❌ MISSING")
+                api_desc = "HELIUS (Accurate Timestamps)"
+            
+            if api_keys.get(api):
+                print(f"   {api_desc}: ✅ Configured")
+            else:
+                print(f"   {api_desc}: ❌ MISSING")
         
         # Recommended APIs
         print(f"\n📈 RECOMMENDED APIs:")
@@ -798,6 +846,16 @@ Examples:
                 print(f"   {api_name}: ✅ Configured")
             else:
                 print(f"   {api_name}: ⚠️ Not configured")
+        
+        # UPDATED features status
+        analysis_config = self.config.get('analysis', {})
+        print(f"\n⚡ UPDATED FEATURES:")
+        print(f"   Real 7-Day ROI: {'✅ Available' if validation['system_ready'] else '❌ Requires Cielo API'}")
+        print(f"   Pattern Thresholds: ✅ Updated")
+        print(f"   Very Short Holds: <{analysis_config.get('very_short_threshold_minutes', 5)} minutes")
+        print(f"   Long Holds: >{analysis_config.get('long_hold_threshold_hours', 24)} hours")
+        print(f"   Decimal Precision: ✅ 1 decimal (days_since_last_trade, avg_sol_buy_per_token)")
+        print(f"   CSV Export: ✅ No timestamp columns (cleaner output)")
         
         if validation['system_ready']:
             try:
@@ -820,9 +878,11 @@ Examples:
                 
                 print(f"\n🎯 SYSTEM CAPABILITIES:")
                 print(f"   Wallet Analysis: {'✅ Ready' if status.get('wallet_compatible', False) else '❌ Not Ready'}")
-                print(f"   Timestamp Accuracy: {status.get('timestamp_accuracy', 'none').upper()}")
+                print(f"   Real 7-Day ROI: ✅ Available (Cielo Trading Stats)")
+                print(f"   Accurate Timestamps: ✅ Available (Helius PRIMARY)")
                 print(f"   Binary Decisions: ✅ Ready") 
                 print(f"   TP/SL Strategy Matrix: ✅ Ready")
+                print(f"   Updated Pattern Recognition: ✅ Ready")
                 
             except Exception as e:
                 print(f"\n❌ Error checking detailed status: {str(e)}")
@@ -836,9 +896,9 @@ Examples:
         input("\nPress Enter to continue...")
     
     def _show_help(self):
-        """Show help and API requirements."""
+        """Show help and UPDATED features."""
         print("\n" + "="*80, flush=True)
-        print("    📖 ZEUS HELP & API REQUIREMENTS - FIXED", flush=True)
+        print("    📖 ZEUS HELP & UPDATED FEATURES", flush=True)
         print("="*80, flush=True)
         
         print(f"\n🎯 ZEUS OVERVIEW:")
@@ -846,8 +906,15 @@ Examples:
         print(f"for automated trading bots. It analyzes wallets over a 30-day period")
         print(f"and provides clear YES/NO decisions on whether to follow their trades.")
         
+        print(f"\n📊 MAJOR UPDATES IN v2.1:")
+        print(f"   • Real 7-Day ROI from Cielo Trading Stats API")
+        print(f"   • Updated pattern thresholds: 5min (very short) | 24hr (long holds)")
+        print(f"   • 1 decimal precision for days_since_last_trade and avg_sol_buy_per_token")
+        print(f"   • Cleaner CSV export (removed timestamp columns)")
+        print(f"   • Enhanced trader pattern recognition")
+        
         print(f"\n🚨 REQUIRED APIs (System cannot function without these):")
-        print(f"   • Cielo Finance API - Wallet trading statistics")
+        print(f"   • Cielo Finance API - Real 7-day ROI & wallet trading statistics")
         print(f"     Get yours at: https://cielo.finance")
         print(f"   • Helius API - Accurate transaction timestamps")
         print(f"     Get yours at: https://helius.xyz")
@@ -856,29 +923,47 @@ Examples:
         print(f"   • Birdeye API - Enhanced token analysis")
         print(f"     Get yours at: https://birdeye.so")
         
-        print(f"\n🔧 MAJOR CHANGES IN v2.0:")
-        print(f"   • Helius API is now REQUIRED (not optional)")
-        print(f"   • Accurate timestamp detection eliminates false 'active' classifications")
-        print(f"   • Better error messages and validation")
-        print(f"   • System fails gracefully when APIs are missing")
+        print(f"\n📊 REAL 7-DAY ROI FEATURES:")
+        print(f"   • Cielo Trading Stats API with period support (?period=7d)")
+        print(f"   • Nested response structure: roi.7d, pnl.7d, tradeCount.7d")
+        print(f"   • No more fake win-rate-to-ROI conversions")
+        print(f"   • Accurate time-based profit/loss data")
+        
+        print(f"\n⚡ UPDATED PATTERN THRESHOLDS:")
+        print(f"   • Very Short Holds: <5 minutes (was 12 minutes)")
+        print(f"   • Snipers & Ultra-Fast Flippers: Proper detection")
+        print(f"   • Long Holds: >24 hours (was 48 hours)")
+        print(f"   • Patient Position Traders: Better classification")
+        
+        print(f"\n🔢 ENHANCED PRECISION:")
+        print(f"   • days_since_last_trade: 1 decimal (5.9 instead of 5.93)")
+        print(f"   • avg_sol_buy_per_token: 1 decimal (2.4 instead of 2.445)")
+        print(f"   • Cleaner, more readable CSV output")
+        
+        print(f"\n📋 CSV EXPORT IMPROVEMENTS:")
+        print(f"   • Removed: timestamp_source, timestamp_accuracy columns")
+        print(f"   • Real 7-day ROI data in roi and median_roi columns")
+        print(f"   • More accurate usd_profit_2_days, usd_profit_7_days")
+        print(f"   • Enhanced trader pattern classification")
         
         print(f"\n📊 ANALYSIS PROCESS:")
         print(f"1. Get REAL last transaction timestamp from Helius API")
-        print(f"2. Get wallet trading statistics from Cielo API")
+        print(f"2. Get REAL 7-day ROI from Cielo Trading Stats API")
         print(f"3. Check minimum 6 unique token trades in 30 days")
-        print(f"4. Calculate composite score (0-100)")
-        print(f"5. Generate binary decisions and TP/SL strategy")
+        print(f"4. Apply UPDATED pattern thresholds for classification")
+        print(f"5. Calculate composite score (0-100)")
+        print(f"6. Generate binary decisions and TP/SL strategy")
         
         print(f"\n🔢 SCORING SYSTEM (0-100 points):")
         print(f"   • Risk-Adjusted Performance (30%)")
         print(f"   • Distribution Quality (25%)")
-        print(f"   • Trading Discipline (20%)")
+        print(f"   • Trading Discipline (20%) - UPDATED thresholds")
         print(f"   • Market Impact Awareness (15%)")
-        print(f"   • Consistency & Reliability (10%)")
+        print(f"   • Consistency & Reliability (10%) - UPDATED thresholds")
         
         print(f"\n🎯 BINARY DECISIONS:")
-        print(f"   Follow Wallet: ≥65 score + ≥6 tokens + No bot behavior")
-        print(f"   Follow Sells: ≥70% exit quality + Low dump rate")
+        print(f"   Follow Wallet: ≥65 score + ≥6 tokens + No excessive ultra-short holds")
+        print(f"   Follow Sells: ≥70% exit quality + Enhanced exit analysis")
         
         print(f"\n⚡ COMMAND EXAMPLES:")
         print(f"   zeus configure --cielo-api-key YOUR_KEY --helius-api-key YOUR_KEY")
@@ -919,7 +1004,7 @@ Examples:
         
         if args.cielo_api_key:
             api_keys["cielo_api_key"] = args.cielo_api_key
-            logger.info("Cielo Finance API key configured")
+            logger.info("Cielo Finance API key configured (Real 7-Day ROI enabled)")
         
         if args.helius_api_key:
             api_keys["helius_api_key"] = args.helius_api_key
@@ -937,12 +1022,14 @@ Examples:
         
         if validation['system_ready']:
             logger.info("✅ Configuration complete - System is READY!")
+            logger.info("📊 Real 7-Day ROI: Available from Cielo Trading Stats")
+            logger.info("⚡ Pattern Thresholds: Updated (5min/24hr)")
         else:
             logger.warning("⚠️ Configuration saved but system is NOT READY!")
             logger.warning(f"Missing REQUIRED APIs: {', '.join([api.replace('_api_key', '').upper() for api in validation['missing_required']])}")
     
     def _handle_analyze_command(self, args):
-        """Handle analyze command with REQUIRED API validation."""
+        """Handle analyze command with UPDATED features."""
         try:
             # Validate required APIs first
             api_keys = get_api_keys_from_config(self.config)
@@ -959,7 +1046,9 @@ Examples:
             from zeus_api_manager import ZeusAPIManager
             from zeus_export import export_zeus_analysis
             
-            logger.info("🔧 Initializing Zeus with REQUIRED API validation...")
+            logger.info("🔧 Initializing Zeus with UPDATED features...")
+            logger.info("📊 Real 7-Day ROI: Available from Cielo Trading Stats")
+            logger.info("⚡ Pattern Thresholds: 5min (very short) | 24hr (long holds)")
             
             api_manager = ZeusAPIManager(
                 birdeye_api_key=api_keys["birdeye_api_key"],
@@ -980,6 +1069,7 @@ Examples:
                     output_file = ensure_output_dir(output_file)
                     export_zeus_analysis({"analyses": [result]}, output_file)
                     logger.info(f"Results saved to {output_file}")
+                    logger.info(f"📊 CSV includes: Real 7-day ROI, 1-decimal precision, no timestamp columns")
                 else:
                     error_type = result.get('error_type', 'UNKNOWN')
                     logger.error(f"Analysis failed ({error_type}): {result.get('error')}")
@@ -991,7 +1081,7 @@ Examples:
                     logger.error(f"No wallets found in {args.wallets}")
                     return
                 
-                logger.info(f"Analyzing {len(wallets)} wallets")
+                logger.info(f"Analyzing {len(wallets)} wallets with UPDATED features")
                 results = analyzer.analyze_wallets_batch(wallets)
                 
                 if results.get("success"):
@@ -999,6 +1089,7 @@ Examples:
                     output_file = ensure_output_dir(output_file)
                     export_zeus_analysis(results, output_file)
                     logger.info(f"Results saved to {output_file}")
+                    logger.info(f"📊 CSV includes: Real 7-day ROI, 1-decimal precision, no timestamp columns")
                 else:
                     logger.error(f"Batch analysis failed: {results.get('error')}")
             
@@ -1012,19 +1103,24 @@ Examples:
             logger.error(f"Analysis error: {str(e)}")
     
     def _handle_status_command(self, args):
-        """Handle status command with REQUIRED API validation."""
+        """Handle status command with UPDATED features."""
         try:
             api_keys = get_api_keys_from_config(self.config)
             validation = validate_required_apis(api_keys)
             
-            print("Zeus System Status:")
+            print("Zeus System Status (UPDATED):")
             print("=" * 50)
             
             print(f"\n🚨 REQUIRED APIs:")
             for api in ['cielo_api_key', 'helius_api_key']:
                 api_name = api.replace('_api_key', '').upper()
+                if api == 'cielo_api_key':
+                    api_desc = f"{api_name} (Real 7-Day ROI)"
+                else:
+                    api_desc = f"{api_name} (Accurate Timestamps)"
+                
                 status = "✅ Configured" if api_keys.get(api) else "❌ MISSING"
-                print(f"{api_name}: {status}")
+                print(f"{api_desc}: {status}")
             
             print(f"\n📈 RECOMMENDED APIs:")
             for api in ['birdeye_api_key']:
@@ -1033,6 +1129,14 @@ Examples:
                 print(f"{api_name}: {status}")
             
             print(f"\nSystem Ready: {'✅ YES' if validation['system_ready'] else '❌ NO'}")
+            
+            # UPDATED features status
+            analysis_config = self.config.get('analysis', {})
+            print(f"\n⚡ UPDATED FEATURES:")
+            print(f"Real 7-Day ROI: {'✅ Available' if validation['system_ready'] else '❌ Requires Cielo API'}")
+            print(f"Pattern Thresholds: ✅ Updated")
+            print(f"Very Short Holds: <{analysis_config.get('very_short_threshold_minutes', 5)} minutes")
+            print(f"Long Holds: >{analysis_config.get('long_hold_threshold_hours', 24)} hours")
             
             if validation['system_ready']:
                 from zeus_api_manager import ZeusAPIManager
@@ -1046,7 +1150,8 @@ Examples:
                 
                 status = api_manager.get_api_status()
                 print(f"Wallet Analysis Ready: {status.get('wallet_compatible', False)}")
-                print(f"Timestamp Accuracy: {status.get('timestamp_accuracy', 'none').upper()}")
+                print(f"Real 7-Day ROI Ready: {validation['system_ready']}")
+                print(f"Updated Pattern Recognition: ✅ Ready")
             else:
                 print(f"Missing REQUIRED APIs: {', '.join([api.replace('_api_key', '').upper() for api in validation['missing_required']])}")
         

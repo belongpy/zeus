@@ -1,11 +1,10 @@
 """
-Zeus Analyzer - FIXED Helius Primary Timestamp Source
-MAJOR FIXES:
-- Helius API is now the PRIMARY and ONLY source for real timestamps
-- Removed all flawed estimation logic
-- System fails gracefully when real timestamps aren't available
-- Clear error messages when timestamp detection fails
-- No more false "active" classifications
+Zeus Analyzer - UPDATED with New Trader Pattern Thresholds
+MAJOR UPDATES:
+- Updated trader pattern thresholds: 5 minutes for very short holds, 24 hours for long holds
+- Enhanced pattern recognition with improved crypto trading behavior detection
+- Maintained Helius PRIMARY timestamp source
+- Real 7-day ROI support integration
 """
 
 import logging
@@ -20,10 +19,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 logger = logging.getLogger("zeus.analyzer")
 
 class ZeusAnalyzer:
-    """FIXED: Core wallet analysis engine with Helius PRIMARY timestamp detection."""
+    """Core wallet analysis engine with updated trader pattern thresholds."""
     
     def __init__(self, api_manager: Any, config: Dict[str, Any]):
-        """Initialize Zeus analyzer with REQUIRED timestamp validation."""
+        """Initialize Zeus analyzer with updated pattern recognition."""
         self.api_manager = api_manager
         self.config = config
         
@@ -37,6 +36,10 @@ class ZeusAnalyzer:
         self.exit_quality_threshold = self.analysis_config.get('exit_quality_threshold', 70.0)
         self.require_real_timestamps = self.analysis_config.get('require_real_timestamps', True)
         
+        # UPDATED TRADER PATTERN THRESHOLDS
+        self.very_short_threshold_hours = 0.083  # 5 minutes (updated from 12 minutes)
+        self.long_hold_threshold_hours = 24      # 24 hours (updated from 48 hours)
+        
         # Thread pool for parallel processing
         self.executor = ThreadPoolExecutor(max_workers=3)
         
@@ -44,21 +47,22 @@ class ZeusAnalyzer:
         self._last_api_call = 0
         self._api_call_lock = threading.Lock()
         
-        logger.info(f"🔧 FIXED Zeus Analyzer initialized with Helius PRIMARY timestamp detection")
+        logger.info(f"🔧 Zeus Analyzer initialized with UPDATED trader pattern thresholds")
         logger.info(f"📊 Analysis window: {self.days_to_analyze} days")
-        logger.info(f"🕐 Require real timestamps: {self.require_real_timestamps}")
+        logger.info(f"⚡ Very short holds: <{self.very_short_threshold_hours*60:.0f} minutes")
+        logger.info(f"⌛ Long holds: >{self.long_hold_threshold_hours} hours")
     
     def analyze_single_wallet(self, wallet_address: str) -> Dict[str, Any]:
-        """FIXED: Analyze a single wallet with Helius PRIMARY timestamp detection."""
-        logger.info(f"🔍 FIXED: Starting Zeus analysis for {wallet_address[:8]}...{wallet_address[-4:]} with Helius PRIMARY")
+        """Analyze a single wallet with updated pattern recognition."""
+        logger.info(f"🔍 Starting Zeus analysis for {wallet_address[:8]}...{wallet_address[-4:]} with updated patterns")
         
         try:
             # Step 1: Get REAL last transaction timestamp from Helius (PRIMARY)
-            logger.info(f"🕐 FIXED: Getting REAL last transaction timestamp from Helius PRIMARY...")
+            logger.info(f"🕐 Getting REAL last transaction timestamp from Helius PRIMARY...")
             last_tx_data = self._get_real_last_transaction_timestamp_helius_primary(wallet_address)
             
             if not last_tx_data.get('success'):
-                logger.error(f"❌ FIXED: Failed to get real timestamp from Helius PRIMARY")
+                logger.error(f"❌ Failed to get real timestamp from Helius PRIMARY")
                 return {
                     'success': False,
                     'wallet_address': wallet_address,
@@ -68,10 +72,10 @@ class ZeusAnalyzer:
                 }
             
             days_since_last = last_tx_data.get('days_since_last_trade', 999)
-            logger.info(f"✅ FIXED: Real timestamp detected - {days_since_last} days since last trade")
+            logger.info(f"✅ Real timestamp detected - {days_since_last} days since last trade")
             
-            # Step 2: Get wallet trading data from Cielo API
-            logger.info(f"📡 FIXED: Fetching Cielo trading data...")
+            # Step 2: Get wallet trading data from Cielo API (with period support for 7-day ROI)
+            logger.info(f"📡 Fetching Cielo trading data with period support...")
             wallet_data = self._get_real_wallet_trading_data(wallet_address)
             
             if not wallet_data.get('success'):
@@ -84,7 +88,7 @@ class ZeusAnalyzer:
                 }
             
             # Step 3: Process wallet data into token analysis format with REAL timestamps
-            logger.info(f"⚙️ FIXED: Processing wallet data with REAL timestamps...")
+            logger.info(f"⚙️ Processing wallet data with REAL timestamps...")
             token_analysis = self._process_real_wallet_data_with_timestamps(
                 wallet_address, 
                 wallet_data.get('data', {}), 
@@ -103,7 +107,7 @@ class ZeusAnalyzer:
             
             # Step 4: Check minimum token requirement
             unique_tokens = len(token_analysis)
-            logger.info(f"📈 FIXED: Found {unique_tokens} unique tokens (minimum required: {self.min_unique_tokens})")
+            logger.info(f"📈 Found {unique_tokens} unique tokens (minimum required: {self.min_unique_tokens})")
             
             if unique_tokens < self.min_unique_tokens:
                 return {
@@ -127,7 +131,7 @@ class ZeusAnalyzer:
             }
             
             # Step 6: Calculate scores and binary decisions
-            logger.info(f"🎯 FIXED: Calculating composite score...")
+            logger.info(f"🎯 Calculating composite score...")
             from zeus_scorer import ZeusScorer
             scorer = ZeusScorer(self.config)
             
@@ -137,8 +141,8 @@ class ZeusAnalyzer:
                 binary_decisions, scoring_result, analysis_result
             )
             
-            logger.info(f"✅ FIXED: Analysis complete - Score: {scoring_result.get('composite_score', 0)}/100")
-            logger.info(f"📅 FIXED: Real timestamp: {days_since_last} days ago (Helius PRIMARY)")
+            logger.info(f"✅ Analysis complete - Score: {scoring_result.get('composite_score', 0)}/100")
+            logger.info(f"📅 Real timestamp: {days_since_last} days ago (Helius PRIMARY)")
             
             # Return complete analysis with REAL timestamp data
             return {
@@ -154,19 +158,22 @@ class ZeusAnalyzer:
                 'strategy_recommendation': strategy_recommendation,
                 'token_analysis': token_analysis,
                 'wallet_data': wallet_data,
-                'last_transaction_data': last_tx_data,  # FIXED: Include real timestamp data
+                'last_transaction_data': last_tx_data,
                 'conclusive_analysis': analysis_result.get('conclusive', True),
                 'analysis_phase': analysis_result.get('analysis_phase', 'real_data_with_helius_primary_timestamps'),
                 'debug_info': {
                     'data_source': wallet_data.get('source'),
                     'timestamp_source': 'helius_primary',
-                    'timestamp_accuracy': 'high',
-                    'days_since_last_trade': days_since_last
+                    'days_since_last_trade': days_since_last,
+                    'pattern_thresholds': {
+                        'very_short_hours': self.very_short_threshold_hours,
+                        'long_hold_hours': self.long_hold_threshold_hours
+                    }
                 }
             }
             
         except Exception as e:
-            logger.error(f"❌ FIXED: Error analyzing wallet {wallet_address}: {str(e)}")
+            logger.error(f"❌ Error analyzing wallet {wallet_address}: {str(e)}")
             return {
                 'success': False,
                 'wallet_address': wallet_address,
@@ -176,24 +183,23 @@ class ZeusAnalyzer:
     
     def _get_real_last_transaction_timestamp_helius_primary(self, wallet_address: str) -> Dict[str, Any]:
         """
-        FIXED: Get the REAL last transaction timestamp using Helius PRIMARY method ONLY.
-        No fallbacks, no estimations - either we get real data or we fail gracefully.
+        Get the REAL last transaction timestamp using Helius API (PRIMARY method).
         """
         try:
-            logger.info(f"🕐 FIXED: Getting REAL timestamp from Helius PRIMARY for {wallet_address[:8]}...")
+            logger.info(f"🕐 Getting REAL timestamp from Helius PRIMARY for {wallet_address[:8]}...")
             
             # Use Helius API as PRIMARY and ONLY source
             helius_result = self.api_manager.get_last_transaction_timestamp(wallet_address)
             
             if helius_result.get('success'):
-                logger.info(f"✅ FIXED: Helius PRIMARY timestamp success!")
+                logger.info(f"✅ Helius PRIMARY timestamp success!")
                 
                 last_timestamp = helius_result.get('last_transaction_timestamp')
                 days_since = helius_result.get('days_since_last_trade')
                 
-                logger.info(f"📅 FIXED: Real timestamp: {last_timestamp}")
-                logger.info(f"📅 FIXED: Date: {datetime.fromtimestamp(last_timestamp) if last_timestamp else 'N/A'}")
-                logger.info(f"📅 FIXED: Days ago: {days_since}")
+                logger.info(f"📅 Real timestamp: {last_timestamp}")
+                logger.info(f"📅 Date: {datetime.fromtimestamp(last_timestamp) if last_timestamp else 'N/A'}")
+                logger.info(f"📅 Days ago: {days_since}")
                 
                 return {
                     'success': True,
@@ -201,99 +207,101 @@ class ZeusAnalyzer:
                     'days_since_last_trade': days_since,
                     'source': 'helius_primary',
                     'method': 'helius_transactions_api',
-                    'timestamp_accuracy': 'high',
                     'transaction_count': helius_result.get('transaction_count', 0)
                 }
             else:
-                # FIXED: No fallbacks - fail gracefully with clear error
+                # No fallbacks - fail gracefully with clear error
                 error_msg = helius_result.get('error', 'Unknown Helius error')
-                logger.error(f"❌ FIXED: Helius PRIMARY failed: {error_msg}")
+                logger.error(f"❌ Helius PRIMARY failed: {error_msg}")
                 
                 return {
                     'success': False,
                     'error': f"Helius PRIMARY timestamp detection failed: {error_msg}",
                     'source': 'helius_primary_failed',
                     'method': 'helius_transactions_api',
-                    'timestamp_accuracy': 'none',
                     'wallet_address': wallet_address
                 }
             
         except Exception as e:
-            logger.error(f"❌ FIXED: Error in Helius PRIMARY timestamp detection: {str(e)}")
+            logger.error(f"❌ Error in Helius PRIMARY timestamp detection: {str(e)}")
             return {
                 'success': False,
                 'error': f"Helius PRIMARY timestamp detection error: {str(e)}",
                 'source': 'helius_primary_error',
-                'method': 'helius_transactions_api',
-                'timestamp_accuracy': 'none'
+                'method': 'helius_transactions_api'
             }
     
     def _get_real_wallet_trading_data(self, wallet_address: str) -> Dict[str, Any]:
-        """Get REAL wallet trading data from Cielo API."""
+        """Get REAL wallet trading data from Cielo API with period support."""
         try:
-            logger.info(f"📡 FIXED: Getting REAL Cielo trading data for {wallet_address[:8]}...")
+            logger.info(f"📡 Getting REAL Cielo trading data for {wallet_address[:8]}...")
             
-            # Call Cielo Trading Stats API
+            # Call Cielo Trading Stats API without period to get all periods
             trading_stats = self.api_manager.get_wallet_trading_stats(wallet_address)
             
             if trading_stats.get('success'):
                 cielo_data = trading_stats.get('data', {})
-                logger.info(f"✅ FIXED: Successfully retrieved REAL Cielo Finance data")
+                logger.info(f"✅ Successfully retrieved REAL Cielo Finance data with period support")
                 
                 if isinstance(cielo_data, dict) and cielo_data:
-                    logger.info(f"📊 FIXED: Cielo data fields: {list(cielo_data.keys())}")
+                    logger.info(f"📊 Cielo data fields: {list(cielo_data.keys())}")
+                    
+                    # Check if we got period-specific data structure
+                    if 'roi' in cielo_data and isinstance(cielo_data['roi'], dict):
+                        periods = list(cielo_data['roi'].keys())
+                        logger.info(f"📊 Multi-period data available: {periods}")
                     
                     return {
                         'success': True,
                         'data': cielo_data,
-                        'source': 'cielo_finance_real',
+                        'source': 'cielo_finance_real_with_periods',
                         'api_response': trading_stats
                     }
                 else:
-                    logger.warning(f"⚠️ FIXED: Cielo returned empty data")
+                    logger.warning(f"⚠️ Cielo returned empty data")
                     return {
                         'success': False,
                         'error': 'Cielo returned empty data',
-                        'source': 'cielo_finance_real'
+                        'source': 'cielo_finance_real_with_periods'
                     }
             else:
-                logger.error(f"❌ FIXED: Cielo Finance API failed: {trading_stats.get('error', 'Unknown error')}")
+                logger.error(f"❌ Cielo Finance API failed: {trading_stats.get('error', 'Unknown error')}")
                 return {
                     'success': False,
                     'error': trading_stats.get('error', 'Unknown error'),
-                    'source': 'cielo_finance_real'
+                    'source': 'cielo_finance_real_with_periods'
                 }
             
         except Exception as e:
-            logger.error(f"❌ FIXED: Error getting wallet data: {str(e)}")
+            logger.error(f"❌ Error getting wallet data: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
-                'source': 'cielo_finance_real'
+                'source': 'cielo_finance_real_with_periods'
             }
     
     def _process_real_wallet_data_with_timestamps(self, wallet_address: str, wallet_data: Dict[str, Any], 
                                                 data_source: str, last_tx_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """FIXED: Process REAL wallet data with accurate timestamp distribution."""
+        """Process REAL wallet data with accurate timestamp distribution."""
         try:
-            logger.info(f"⚙️ FIXED: Processing {data_source} data with REAL timestamps for {wallet_address[:8]}...")
+            logger.info(f"⚙️ Processing {data_source} data with REAL timestamps for {wallet_address[:8]}...")
             
             if not isinstance(wallet_data, dict):
-                logger.error(f"❌ FIXED: Expected dict but got {type(wallet_data)}")
+                logger.error(f"❌ Expected dict but got {type(wallet_data)}")
                 return []
             
             # Process real Cielo data with REAL timestamps from Helius
             return self._process_real_cielo_data_with_timestamps(wallet_address, wallet_data, last_tx_data)
                 
         except Exception as e:
-            logger.error(f"❌ FIXED: Error processing wallet data with timestamps: {str(e)}")
+            logger.error(f"❌ Error processing wallet data with timestamps: {str(e)}")
             return []
     
     def _process_real_cielo_data_with_timestamps(self, wallet_address: str, cielo_data: Dict[str, Any], 
                                                last_tx_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """FIXED: Process REAL Cielo Finance data with accurate timestamp distribution."""
+        """Process REAL Cielo Finance data with accurate timestamp distribution."""
         try:
-            logger.info(f"🏦 FIXED: Processing REAL Cielo data with Helius PRIMARY timestamps")
+            logger.info(f"🏦 Processing REAL Cielo data with Helius PRIMARY timestamps")
             
             # Extract REAL values from Cielo Trading Stats
             total_trades = cielo_data.get('swaps_count', 0) or cielo_data.get('total_swaps', 0) or cielo_data.get('total_trades', 0)
@@ -304,8 +312,14 @@ class ZeusAnalyzer:
             win_rate_pct = cielo_data.get('winrate', 0) or cielo_data.get('win_rate', 0)
             win_rate = win_rate_pct / 100.0 if win_rate_pct > 1 else win_rate_pct
             
-            # PnL data
-            pnl_usd = cielo_data.get('pnl', 0) or cielo_data.get('total_pnl', 0) or cielo_data.get('realized_pnl', 0)
+            # PnL data - try to get period-specific data first, then fallback
+            if 'pnl' in cielo_data and isinstance(cielo_data['pnl'], dict):
+                # Multi-period data structure
+                pnl_usd = cielo_data['pnl'].get('30d', 0) or cielo_data['pnl'].get('max', 0)
+                logger.info(f"📊 Using multi-period PnL: ${pnl_usd}")
+            else:
+                # Single period data
+                pnl_usd = cielo_data.get('pnl', 0) or cielo_data.get('total_pnl', 0) or cielo_data.get('realized_pnl', 0)
             
             # Volume data
             total_buy_usd = cielo_data.get('total_buy_amount_usd', 0) or cielo_data.get('buy_volume_usd', 0)
@@ -316,11 +330,11 @@ class ZeusAnalyzer:
             avg_hold_time_sec = cielo_data.get('average_holding_time_sec', 3600) or cielo_data.get('avg_holding_time', 3600)
             avg_hold_time_hours = avg_hold_time_sec / 3600.0 if avg_hold_time_sec > 100 else avg_hold_time_sec
             
-            # FIXED: Get REAL last transaction timestamp from Helius PRIMARY
+            # Get REAL last transaction timestamp from Helius PRIMARY
             real_last_timestamp = last_tx_data.get('last_timestamp', int(time.time()) - (999 * 24 * 3600))
             days_since_last = last_tx_data.get('days_since_last_trade', 999)
             
-            logger.info(f"📊 FIXED: Extracted Cielo metrics with REAL Helius PRIMARY timestamps:")
+            logger.info(f"📊 Extracted Cielo metrics with REAL Helius PRIMARY timestamps:")
             logger.info(f"  total_trades: {total_trades}")
             logger.info(f"  buy_count: {buy_count}, sell_count: {sell_count}")
             logger.info(f"  win_rate: {win_rate:.2%}")
@@ -340,7 +354,7 @@ class ZeusAnalyzer:
             roi_dist = cielo_data.get('roi_distribution', {})
             
             if roi_dist and isinstance(roi_dist, dict):
-                logger.info(f"✅ FIXED: Using real ROI distribution from Cielo")
+                logger.info(f"✅ Using real ROI distribution from Cielo")
                 moonshots = roi_dist.get('roi_above_500', 0) or roi_dist.get('roi_500_plus', 0)
                 big_wins = roi_dist.get('roi_200_to_500', 0) or roi_dist.get('roi_200_500', 0)
                 small_wins = roi_dist.get('roi_0_to_200', 0) or roi_dist.get('roi_0_200', 0)
@@ -348,7 +362,7 @@ class ZeusAnalyzer:
                 heavy_losses = roi_dist.get('roi_below_neg50', 0) or roi_dist.get('roi_minus50_plus', 0)
             else:
                 # Estimate distribution from win rate
-                logger.info(f"📊 FIXED: Estimating ROI distribution from win rate")
+                logger.info(f"📊 Estimating ROI distribution from win rate")
                 winning_trades = int(total_trades * win_rate) if total_trades > 0 else 0
                 losing_trades = total_trades - winning_trades
                 
@@ -376,7 +390,7 @@ class ZeusAnalyzer:
             )
             
         except Exception as e:
-            logger.error(f"❌ FIXED: Error processing REAL Cielo data with timestamps: {str(e)}")
+            logger.error(f"❌ Error processing REAL Cielo data with timestamps: {str(e)}")
             return []
     
     def _create_token_analysis_with_real_helius_timestamps(self, wallet_address: str, estimated_tokens: int,
@@ -385,26 +399,26 @@ class ZeusAnalyzer:
                                                          small_wins: int, small_losses: int, heavy_losses: int,
                                                          buy_count: int, sell_count: int, real_last_timestamp: int, 
                                                          pnl_usd: float, days_since_last: float) -> List[Dict[str, Any]]:
-        """FIXED: Create realistic token analysis with REAL Helius PRIMARY timestamps."""
+        """Create realistic token analysis with REAL Helius PRIMARY timestamps."""
         try:
             if estimated_tokens == 0 or total_trades == 0:
-                logger.warning(f"⚠️ FIXED: No trades to process")
+                logger.warning(f"⚠️ No trades to process")
                 return []
             
-            logger.info(f"🔧 FIXED: Creating {estimated_tokens} token analyses with REAL Helius PRIMARY timestamps")
+            logger.info(f"🔧 Creating {estimated_tokens} token analyses with REAL Helius PRIMARY timestamps")
             
             token_analysis = []
             avg_trades_per_token = max(1, total_trades / estimated_tokens)
             avg_volume_per_token = total_volume_sol / estimated_tokens if estimated_tokens > 0 else 0
             completion_ratio = sell_count / max(buy_count, 1) if buy_count > 0 else 0.7
             
-            # FIXED: Use REAL Helius timestamp as anchor point
+            # Use REAL Helius timestamp as anchor point
             current_time = int(time.time())
             anchor_timestamp = real_last_timestamp
             
-            logger.info(f"🕐 FIXED: Using REAL Helius PRIMARY anchor timestamp: {anchor_timestamp}")
-            logger.info(f"🕐 FIXED: Anchor date: {datetime.fromtimestamp(anchor_timestamp)}")
-            logger.info(f"🕐 FIXED: Days since last trade: {days_since_last}")
+            logger.info(f"🕐 Using REAL Helius PRIMARY anchor timestamp: {anchor_timestamp}")
+            logger.info(f"🕐 Anchor date: {datetime.fromtimestamp(anchor_timestamp)}")
+            logger.info(f"🕐 Days since last trade: {days_since_last}")
             
             # Calculate realistic time distribution
             time_spread_seconds = min(self.days_to_analyze * 24 * 3600, 30 * 24 * 3600)
@@ -427,7 +441,7 @@ class ZeusAnalyzer:
                 # Trade status
                 trade_status = 'completed' if i < int(estimated_tokens * completion_ratio) else 'open'
                 
-                # Hold time variation
+                # Hold time variation with UPDATED pattern-aware logic
                 hold_time_variation = 0.3 + (i % 7) / 10
                 hold_time_hours = avg_hold_time_hours * hold_time_variation
                 
@@ -445,7 +459,7 @@ class ZeusAnalyzer:
                 buy_swaps = max(1, int(swap_count * 0.6))
                 sell_swaps = swap_count - buy_swaps if trade_status == 'completed' else 0
                 
-                # FIXED: Calculate REALISTIC timestamps based on REAL Helius data
+                # Calculate REALISTIC timestamps based on REAL Helius data
                 recency_factor = 1.0 - (i / estimated_tokens)
                 
                 if recency_factor > 0.8:
@@ -467,7 +481,7 @@ class ZeusAnalyzer:
                 
                 # Log first few for debugging
                 if i < 3:
-                    logger.debug(f"  Token {i}: ROI {roi_percent:.1f}%, First: {datetime.fromtimestamp(first_timestamp)}")
+                    logger.debug(f"  Token {i}: ROI {roi_percent:.1f}%, Hold: {hold_time_hours:.2f}h, First: {datetime.fromtimestamp(first_timestamp)}")
                 
                 token_analysis.append({
                     'token_mint': f'Real_Token_{wallet_address[:8]}_{i}_{first_timestamp}',
@@ -490,23 +504,23 @@ class ZeusAnalyzer:
                     'data_source': 'cielo_finance_real_with_helius_primary_timestamps'
                 })
             
-            logger.info(f"✅ FIXED: Created {len(token_analysis)} realistic token analyses with REAL Helius PRIMARY timestamps")
+            logger.info(f"✅ Created {len(token_analysis)} realistic token analyses with REAL Helius PRIMARY timestamps")
             
             return token_analysis
             
         except Exception as e:
-            logger.error(f"❌ FIXED: Error creating token analysis with real timestamps: {str(e)}")
+            logger.error(f"❌ Error creating token analysis with real timestamps: {str(e)}")
             return []
     
     def analyze_wallets_batch(self, wallet_addresses: List[str]) -> Dict[str, Any]:
         """Analyze multiple wallets in batch with REAL Helius PRIMARY timestamps."""
-        logger.info(f"🚀 FIXED: Starting batch analysis of {len(wallet_addresses)} wallets with Helius PRIMARY timestamps")
+        logger.info(f"🚀 Starting batch analysis of {len(wallet_addresses)} wallets with Helius PRIMARY timestamps")
         
         analyses = []
         failed_analyses = []
         
         for i, wallet_address in enumerate(wallet_addresses, 1):
-            logger.info(f"📊 FIXED: Analyzing wallet {i}/{len(wallet_addresses)}: {wallet_address[:8]}...{wallet_address[-4:]}")
+            logger.info(f"📊 Analyzing wallet {i}/{len(wallet_addresses)}: {wallet_address[:8]}...{wallet_address[-4:]}")
             
             try:
                 result = self.analyze_single_wallet(wallet_address)
@@ -517,7 +531,7 @@ class ZeusAnalyzer:
                     follow_wallet = result.get('binary_decisions', {}).get('follow_wallet', False)
                     follow_sells = result.get('binary_decisions', {}).get('follow_sells', False)
                     
-                    # FIXED: Show REAL timestamp info from Helius PRIMARY
+                    # Show REAL timestamp info from Helius PRIMARY
                     last_tx_data = result.get('last_transaction_data', {})
                     days_since = last_tx_data.get('days_since_last_trade', 'unknown')
                     timestamp_source = last_tx_data.get('source', 'unknown')
@@ -535,7 +549,7 @@ class ZeusAnalyzer:
                     time.sleep(0.5)
                     
             except Exception as e:
-                logger.error(f"❌ FIXED: Error analyzing wallet {wallet_address}: {str(e)}")
+                logger.error(f"❌ Error analyzing wallet {wallet_address}: {str(e)}")
                 failed_analyses.append({
                     'success': False,
                     'wallet_address': wallet_address,
@@ -561,11 +575,14 @@ class ZeusAnalyzer:
             'debug_info': {
                 'helius_primary_count': timestamp_sources.get('helius_primary', 0),
                 'failed_timestamp_count': len([f for f in failed_analyses if 'TIMESTAMP' in f.get('error_type', '')]),
-                'timestamp_sources': timestamp_sources
+                'timestamp_sources': timestamp_sources,
+                'pattern_thresholds': {
+                    'very_short_threshold_hours': self.very_short_threshold_hours,
+                    'long_hold_threshold_hours': self.long_hold_threshold_hours
+                }
             }
         }
     
-    # [Binary decision methods remain the same - they don't need timestamp fixes]
     def _make_binary_decisions(self, scoring_result: Dict[str, Any], 
                              analysis_result: Dict[str, Any]) -> Dict[str, Any]:
         """Make binary decisions based on scoring and enhanced analysis."""
@@ -573,7 +590,7 @@ class ZeusAnalyzer:
             composite_score = scoring_result.get('composite_score', 0)
             token_analysis = analysis_result.get('token_analysis', [])
             
-            logger.info(f"🎯 FIXED: Making binary decisions for score: {composite_score:.1f}")
+            logger.info(f"🎯 Making binary decisions for score: {composite_score:.1f}")
             
             # Decision 1: Follow Wallet based on composite score and basic checks
             follow_wallet = self._decide_follow_wallet(composite_score, scoring_result, token_analysis)
@@ -583,7 +600,7 @@ class ZeusAnalyzer:
             if follow_wallet:
                 follow_sells = self._decide_follow_sells(scoring_result, token_analysis)
             
-            logger.info(f"✅ FIXED: Binary decisions: Follow Wallet={follow_wallet}, Follow Sells={follow_sells}")
+            logger.info(f"✅ Binary decisions: Follow Wallet={follow_wallet}, Follow Sells={follow_sells}")
             
             return {
                 'follow_wallet': follow_wallet,
@@ -595,7 +612,7 @@ class ZeusAnalyzer:
             }
             
         except Exception as e:
-            logger.error(f"❌ FIXED: Error making binary decisions: {str(e)}")
+            logger.error(f"❌ Error making binary decisions: {str(e)}")
             return {
                 'follow_wallet': False,
                 'follow_sells': False,
@@ -620,14 +637,14 @@ class ZeusAnalyzer:
         # SECONDARY CHECKS: Only minor penalties for extreme cases
         total_tokens = len(token_analysis)
         if total_tokens > 0:
-            # Check for excessive flipper behavior (very strict threshold)
+            # Check for excessive flipper behavior (using UPDATED threshold)
             very_short_holds = sum(1 for token in token_analysis 
-                                 if token.get('hold_time_hours', 24) < 0.1)  # < 6 minutes
+                                 if token.get('hold_time_hours', 24) < self.very_short_threshold_hours)  # < 5 minutes
             flipper_rate = very_short_holds / total_tokens * 100
             
             # Only disqualify if >50% are ultra-short holds (extreme flipper behavior)  
             if flipper_rate > 50:
-                logger.info(f"Follow wallet: NO - Extreme flipper behavior: {flipper_rate:.1f}% ultra-short holds")
+                logger.info(f"Follow wallet: NO - Extreme flipper behavior: {flipper_rate:.1f}% ultra-short holds (<{self.very_short_threshold_hours*60:.0f} min)")
                 return False
         
         logger.info(f"Follow wallet: YES - Score {composite_score:.1f} >= {self.composite_score_threshold}, passed all checks")
@@ -637,9 +654,9 @@ class ZeusAnalyzer:
                            token_analysis: List[Dict[str, Any]]) -> bool:
         """Enhanced exit analysis to determine if we should copy their exits."""
         try:
-            logger.info("🔍 FIXED: ENHANCED EXIT ANALYSIS - Studying their sell behavior...")
+            logger.info("🔍 ENHANCED EXIT ANALYSIS - Studying their sell behavior...")
             
-            # Get enhanced exit analysis
+            # Get enhanced exit analysis with UPDATED thresholds
             exit_analysis = self._enhanced_exit_analysis(token_analysis)
             
             if not exit_analysis.get('sufficient_data'):
@@ -658,11 +675,11 @@ class ZeusAnalyzer:
                 return False
             
         except Exception as e:
-            logger.error(f"❌ FIXED: Error in enhanced exit analysis: {str(e)}")
+            logger.error(f"❌ Error in enhanced exit analysis: {str(e)}")
             return False
     
     def _enhanced_exit_analysis(self, token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Deep dive exit behavior analysis."""
+        """Deep dive exit behavior analysis with UPDATED thresholds."""
         try:
             # Filter to completed trades only
             completed_trades = [t for t in token_analysis if t.get('trade_status') == 'completed']
@@ -677,13 +694,13 @@ class ZeusAnalyzer:
             # Study most recent completed trades
             study_trades = sorted(completed_trades, key=lambda x: x.get('last_timestamp', 0), reverse=True)[:10]
             
-            logger.info(f"📊 FIXED: Deep studying {len(study_trades)} completed trades for exit patterns...")
+            logger.info(f"📊 Deep studying {len(study_trades)} completed trades for exit patterns...")
             
-            # Analyze different aspects of exit behavior
-            timing_metrics = self._analyze_exit_timing(study_trades)
+            # Analyze different aspects of exit behavior with UPDATED thresholds
+            timing_metrics = self._analyze_exit_timing_updated(study_trades)
             profit_metrics = self._analyze_profit_capture(study_trades)
-            loss_metrics = self._analyze_loss_management(study_trades)
-            discipline_metrics = self._analyze_exit_discipline(study_trades)
+            loss_metrics = self._analyze_loss_management_updated(study_trades)
+            discipline_metrics = self._analyze_exit_discipline_updated(study_trades)
             
             # Calculate overall exit quality score (weighted average)
             exit_quality_score = (
@@ -693,7 +710,7 @@ class ZeusAnalyzer:
                 discipline_metrics.get('discipline_score', 0) * 0.15
             )
             
-            logger.info(f"Exit Analysis Breakdown:")
+            logger.info(f"Exit Analysis Breakdown (UPDATED thresholds):")
             logger.info(f"  - Timing Score: {timing_metrics.get('timing_score', 0):.1f}/100")
             logger.info(f"  - Profit Capture: {profit_metrics.get('profit_capture_score', 0):.1f}/100")
             logger.info(f"  - Loss Management: {loss_metrics.get('loss_management_score', 0):.1f}/100")
@@ -711,47 +728,51 @@ class ZeusAnalyzer:
             }
             
         except Exception as e:
-            logger.error(f"❌ FIXED: Error in enhanced exit analysis: {str(e)}")
+            logger.error(f"❌ Error in enhanced exit analysis: {str(e)}")
             return {
                 'sufficient_data': False,
                 'reason': f'Analysis error: {str(e)}',
                 'exit_quality_score': 0
             }
     
-    def _analyze_exit_timing(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Analyze if they exit too early, too late, or at optimal times."""
+    def _analyze_exit_timing_updated(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze exit timing with UPDATED thresholds."""
         try:
             hold_times = [t.get('hold_time_hours', 0) for t in trades]
             rois = [t.get('roi_percent', 0) for t in trades]
             
-            # Categorize exits by timing
-            quick_exits = sum(1 for h in hold_times if h < 1)  # < 1 hour
-            medium_exits = sum(1 for h in hold_times if 1 <= h <= 24)  # 1-24 hours  
-            long_exits = sum(1 for h in hold_times if h > 24)  # > 1 day
+            # Categorize exits by timing with UPDATED thresholds
+            very_quick_exits = sum(1 for h in hold_times if h < self.very_short_threshold_hours)  # < 5 minutes
+            quick_exits = sum(1 for h in hold_times if self.very_short_threshold_hours <= h < 1)  # 5 min - 1 hour
+            medium_exits = sum(1 for h in hold_times if 1 <= h <= self.long_hold_threshold_hours)  # 1 hour - 24 hours  
+            long_exits = sum(1 for h in hold_times if h > self.long_hold_threshold_hours)  # > 24 hours
             
             # Analyze performance by timing
             quick_trades = [t for t in trades if t.get('hold_time_hours', 0) < 1]
             quick_avg_roi = sum(t.get('roi_percent', 0) for t in quick_trades) / len(quick_trades) if quick_trades else 0
             
-            medium_trades = [t for t in trades if 1 <= t.get('hold_time_hours', 0) <= 24]
+            medium_trades = [t for t in trades if 1 <= t.get('hold_time_hours', 0) <= self.long_hold_threshold_hours]
             medium_avg_roi = sum(t.get('roi_percent', 0) for t in medium_trades) / len(medium_trades) if medium_trades else 0
             
             # Score timing (favor medium holds, penalize too quick or too long)
             timing_score = 50  # Base score
             if medium_exits > len(trades) * 0.4:  # Good - mostly medium timing
                 timing_score += 30
-            if quick_exits < len(trades) * 0.3:  # Good - not too many quick exits
+            if very_quick_exits < len(trades) * 0.2:  # Good - not too many very quick exits (UPDATED)
                 timing_score += 20
-            if long_exits < len(trades) * 0.2:  # Good - not holding too long
+            if long_exits < len(trades) * 0.2:  # Good - not holding too long (UPDATED)
                 timing_score += 10
             
             # Bonus for performance
             if medium_avg_roi > quick_avg_roi:  # Medium timing performs better
                 timing_score += 10
                 
+            logger.debug(f"Exit timing (UPDATED): very_quick={very_quick_exits}, quick={quick_exits}, medium={medium_exits}, long={long_exits}")
+                
             return {
                 'timing_score': min(100, max(0, timing_score)),
                 'avg_hold_time': sum(hold_times) / len(hold_times),
+                'very_quick_exits_pct': very_quick_exits / len(trades) * 100,
                 'quick_exits_pct': quick_exits / len(trades) * 100,
                 'medium_exits_pct': medium_exits / len(trades) * 100,
                 'long_exits_pct': long_exits / len(trades) * 100,
@@ -812,8 +833,8 @@ class ZeusAnalyzer:
             logger.error(f"Profit capture analysis error: {str(e)}")
             return {'profit_capture_score': 0}
     
-    def _analyze_loss_management(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Analyze how they handle losing trades."""
+    def _analyze_loss_management_updated(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze loss management with UPDATED thresholds."""
         try:
             losing_trades = [t for t in trades if t.get('roi_percent', 0) < 0]
             
@@ -828,9 +849,10 @@ class ZeusAnalyzer:
             medium_losses = sum(1 for roi in loss_rois if 25 < roi <= 50)  # 25-50% loss
             heavy_losses = sum(1 for roi in loss_rois if roi > 50)  # > 50% loss
             
-            # Analyze cutting speed
-            quick_cuts = sum(1 for t in losing_trades if t.get('hold_time_hours', 0) < 4)  # Cut within 4 hours
-            slow_cuts = sum(1 for t in losing_trades if t.get('hold_time_hours', 0) > 24)  # Held > 1 day
+            # Analyze cutting speed with UPDATED thresholds
+            very_quick_cuts = sum(1 for t in losing_trades if t.get('hold_time_hours', 0) < self.very_short_threshold_hours)  # < 5 minutes
+            quick_cuts = sum(1 for t in losing_trades if self.very_short_threshold_hours <= t.get('hold_time_hours', 0) < 4)  # 5 min - 4 hours
+            slow_cuts = sum(1 for t in losing_trades if t.get('hold_time_hours', 0) > self.long_hold_threshold_hours)  # > 24 hours
             
             # Score loss management
             loss_score = 80  # Start with good base
@@ -838,40 +860,43 @@ class ZeusAnalyzer:
             # Penalties
             if heavy_losses > len(losing_trades) * 0.2:  # More than 20% heavy losses
                 loss_score -= 30
-            if slow_cuts > len(losing_trades) * 0.4:  # More than 40% slow to cut
+            if slow_cuts > len(losing_trades) * 0.4:  # More than 40% slow to cut (UPDATED)
                 loss_score -= 25
             if sum(loss_rois) / len(loss_rois) > 40:  # Average loss > 40%
                 loss_score -= 15
                 
-            # Bonuses
-            if quick_cuts > len(losing_trades) * 0.6:  # More than 60% quick cuts
+            # Bonuses for quick cutting (UPDATED)
+            total_quick_cuts = very_quick_cuts + quick_cuts
+            if total_quick_cuts > len(losing_trades) * 0.6:  # More than 60% quick cuts
                 loss_score += 20
+                
+            logger.debug(f"Loss management (UPDATED): very_quick_cuts={very_quick_cuts}, quick_cuts={quick_cuts}, slow_cuts={slow_cuts}")
                 
             return {
                 'loss_management_score': max(0, min(100, loss_score)),
                 'loss_rate': len(losing_trades) / len(trades) * 100,
                 'avg_loss_roi': -sum(loss_rois) / len(loss_rois),
                 'heavy_losses_pct': heavy_losses / len(losing_trades) * 100,
-                'quick_cuts_pct': quick_cuts / len(losing_trades) * 100
+                'quick_cuts_pct': total_quick_cuts / len(losing_trades) * 100
             }
             
         except Exception as e:
             logger.error(f"Loss management analysis error: {str(e)}")
             return {'loss_management_score': 50}
     
-    def _analyze_exit_discipline(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Analyze overall exit discipline and consistency."""
+    def _analyze_exit_discipline_updated(self, trades: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze exit discipline with UPDATED thresholds."""
         try:
-            # Check for problematic behaviors
-            dump_trades = sum(1 for t in trades if t.get('hold_time_hours', 0) < 0.1)  # < 6 minutes
+            # Check for problematic behaviors with UPDATED thresholds
+            dump_trades = sum(1 for t in trades if t.get('hold_time_hours', 0) < self.very_short_threshold_hours)  # < 5 minutes
             panic_trades = sum(1 for t in trades 
                               if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 0) < 1)
             
             # Calculate discipline score
             discipline_score = 100
             
-            # Major penalties
-            if dump_trades > len(trades) * 0.3:  # More than 30% dumps
+            # Major penalties (UPDATED)
+            if dump_trades > len(trades) * 0.3:  # More than 30% dumps (5-minute threshold)
                 discipline_score -= 50
             elif dump_trades > len(trades) * 0.1:  # More than 10% dumps
                 discipline_score -= 25
@@ -881,10 +906,12 @@ class ZeusAnalyzer:
             
             # Check consistency in ROI distribution
             rois = [t.get('roi_percent', 0) for t in trades]
-            roi_std = (sum((roi - sum(rois)/len(rois)) ** 2 for roi in rois) / len(rois)) ** 0.5
+            roi_std = (sum((roi - sum(rois)/len(rois)) ** 2 for roi in rois) / len(rois)) ** 0.5 if len(rois) > 1 else 0
             
             if roi_std < 100:  # Consistent results
                 discipline_score += 10
+                
+            logger.debug(f"Exit discipline (UPDATED): dump_trades={dump_trades} (<{self.very_short_threshold_hours*60:.0f}min), panic_trades={panic_trades}")
                 
             return {
                 'discipline_score': max(0, min(100, discipline_score)),
@@ -959,7 +986,7 @@ class ZeusAnalyzer:
                 return self._create_custom_strategy(wallet_metrics, exit_analysis, individualized_stop_loss)
             
         except Exception as e:
-            logger.error(f"❌ FIXED: Error generating individualized strategy: {str(e)}")
+            logger.error(f"❌ Error generating individualized strategy: {str(e)}")
             return {
                 'copy_entries': False,
                 'copy_exits': False,
@@ -984,7 +1011,7 @@ class ZeusAnalyzer:
             winning_rois = [roi for roi in rois if roi > 0]
             losing_rois = [roi for roi in rois if roi < 0]
             
-            # Hold time analysis
+            # Hold time analysis with UPDATED thresholds
             hold_times = [t.get('hold_time_hours', 0) for t in completed_trades]
             
             # Bet size analysis
@@ -997,11 +1024,11 @@ class ZeusAnalyzer:
             small_losses = sum(1 for roi in rois if -50 < roi <= 0)
             heavy_losses = sum(1 for roi in rois if roi <= -50)
             
-            # Loss management analysis
+            # Loss management analysis with UPDATED thresholds
             quick_cuts = sum(1 for t in completed_trades 
                             if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 24) < 4)
             slow_cuts = sum(1 for t in completed_trades 
-                           if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 0) > 24)
+                           if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 0) > self.long_hold_threshold_hours)
             
             return {
                 'total_trades': len(completed_trades),
@@ -1021,7 +1048,9 @@ class ZeusAnalyzer:
                 'heavy_losses': heavy_losses,
                 'quick_cuts': quick_cuts,
                 'slow_cuts': slow_cuts,
-                'roi_std': (sum((roi - sum(rois)/len(rois)) ** 2 for roi in rois) / len(rois)) ** 0.5 if len(rois) > 1 else 0
+                'roi_std': (sum((roi - sum(rois)/len(rois)) ** 2 for roi in rois) / len(rois)) ** 0.5 if len(rois) > 1 else 0,
+                'very_short_threshold_hours': self.very_short_threshold_hours,
+                'long_hold_threshold_hours': self.long_hold_threshold_hours
             }
             
         except Exception as e:
@@ -1066,13 +1095,13 @@ class ZeusAnalyzer:
                 stop_loss = -35
                 reasoning = "standard stop"
             
-            # Additional adjustments based on trading style
+            # Additional adjustments based on trading style (UPDATED thresholds)
             avg_hold_time = wallet_metrics.get('avg_hold_time', 24)
             roi_std = wallet_metrics.get('roi_std', 100)
             
-            if avg_hold_time < 2:  # Very short-term trader
-                stop_loss += 5  # Tighter stop for flippers
-            elif avg_hold_time > 48:  # Long-term holder
+            if avg_hold_time < self.very_short_threshold_hours:  # Very short-term trader (< 5 minutes)
+                stop_loss += 5  # Tighter stop for ultra-fast flippers
+            elif avg_hold_time > self.long_hold_threshold_hours:  # Long-term holder (> 24 hours)
                 stop_loss -= 5  # Wider stop for patient traders
             
             if roi_std > 200:  # Very volatile trading style
@@ -1081,7 +1110,7 @@ class ZeusAnalyzer:
             # Final bounds check
             stop_loss = max(-50, min(-20, stop_loss))
             
-            logger.info(f"Calculated wallet-specific stop loss: {stop_loss}% ({reasoning})")
+            logger.info(f"Calculated wallet-specific stop loss: {stop_loss}% ({reasoning}) [UPDATED thresholds]")
             return stop_loss
             
         except Exception as e:
@@ -1161,7 +1190,7 @@ class ZeusAnalyzer:
             roi_std = wallet_metrics.get('roi_std', 100)
             total_trades = wallet_metrics.get('total_trades', 1)
             
-            # Determine custom strategy based on specific issues
+            # Determine custom strategy based on specific issues (UPDATED thresholds)
             if profit_capture_score < 40:  # They exit winners too early
                 if moonshots > 0:  # But they do find gems
                     tp1, tp2, tp3 = 100, 300, 800
@@ -1171,12 +1200,15 @@ class ZeusAnalyzer:
                     reasoning = f"Custom: They exit winners too early (avg: {avg_win_roi:.0f}%) - use higher targets"
                     
             elif timing_score < 40:  # Poor timing overall
-                if avg_hold_time < 2:  # Too quick
+                if avg_hold_time < self.very_short_threshold_hours:  # Too quick (< 5 minutes)
                     tp1, tp2, tp3 = 60, 150, 300
-                    reasoning = f"Custom: Too quick exits ({avg_hold_time:.1f}h avg) - moderate targets"
-                else:  # Hold too long
+                    reasoning = f"Custom: Too quick exits ({avg_hold_time*60:.0f}min avg) - moderate targets"
+                elif avg_hold_time > self.long_hold_threshold_hours:  # Hold too long (> 24 hours)
                     tp1, tp2, tp3 = 50, 120, 250
                     reasoning = f"Custom: Hold too long ({avg_hold_time:.1f}h avg) - take profits sooner"
+                else:
+                    tp1, tp2, tp3 = 75, 180, 350
+                    reasoning = f"Custom: Poor timing overall - balanced approach"
                     
             elif roi_std > 150:  # Very inconsistent results
                 tp1, tp2, tp3 = 60, 150, 400

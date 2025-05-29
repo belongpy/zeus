@@ -1,11 +1,10 @@
 """
-Zeus API Manager - FIXED Helius Primary Timestamp Source
-MAJOR FIXES:
-- Helius API is now the PRIMARY timestamp source (required)
-- Fixed Helius API endpoint and parameters
-- Removed flawed fallback estimation logic
-- Better error handling and logging
-- Accurate "days since last trade" calculation
+Zeus API Manager - FIXED with Real 7-Day ROI Support from Cielo Trading Stats
+MAJOR UPDATES:
+- Added period-specific Trading Stats API support
+- Real 7-day ROI/PnL data extraction
+- Removed timestamp accuracy columns
+- Enhanced error handling
 """
 
 import logging
@@ -18,11 +17,11 @@ import dateutil.parser
 logger = logging.getLogger("zeus.api_manager")
 
 class ZeusAPIManager:
-    """Zeus API manager with Helius as PRIMARY timestamp source."""
+    """Zeus API manager with Helius PRIMARY timestamp and Real 7-Day ROI support."""
     
     def __init__(self, birdeye_api_key: str = "", cielo_api_key: str = "", 
                  helius_api_key: str = "", rpc_url: str = "https://api.mainnet-beta.solana.com"):
-        """Initialize with REQUIRED Helius API key validation."""
+        """Initialize with REQUIRED API key validation."""
         
         # Store API keys
         self.birdeye_api_key = birdeye_api_key.strip() if birdeye_api_key else ""
@@ -81,25 +80,22 @@ class ZeusAPIManager:
     
     def get_last_transaction_timestamp(self, wallet_address: str) -> Dict[str, Any]:
         """
-        FIXED: Get the REAL last transaction timestamp using Helius API (PRIMARY method).
-        This is now the main method for timestamp detection.
+        Get the REAL last transaction timestamp using Helius API (PRIMARY method).
         """
         try:
             logger.info(f"🕐 HELIUS PRIMARY: Getting real last transaction timestamp for {wallet_address[:8]}...")
             
             self.api_stats['helius']['calls'] += 1
             
-            # FIXED: Use correct Helius API endpoint and parameters
+            # Use correct Helius API endpoint and parameters
             url = f"{self.helius_base_url}/addresses/{wallet_address}/transactions"
             params = {
                 'api-key': self.helius_api_key,
                 'limit': 10,  # Get recent 10 transactions for better accuracy
                 'commitment': 'confirmed'
-                # Remove 'type': 'SWAP' filter to get ANY transaction type
             }
             
-            logger.info(f"🔍 Helius API call: {url}")
-            logger.debug(f"Parameters: {params}")
+            logger.debug(f"🔍 Helius API call: {url}")
             
             response = self.session.get(url, params=params, timeout=30)
             
@@ -122,17 +118,16 @@ class ZeusAPIManager:
                         logger.info(f"✅ HELIUS PRIMARY: Found real last trade timestamp")
                         logger.info(f"   Timestamp: {latest_trade_timestamp}")
                         logger.info(f"   Date: {datetime.fromtimestamp(latest_trade_timestamp)}")
-                        logger.info(f"   Days ago: {days_since_last:.2f}")
+                        logger.info(f"   Days ago: {days_since_last:.1f}")
                         
                         return {
                             'success': True,
                             'last_transaction_timestamp': latest_trade_timestamp,
-                            'days_since_last_trade': round(days_since_last, 2),
+                            'days_since_last_trade': round(days_since_last, 1),  # Changed to 1 decimal
                             'transaction_count': len(transactions),
                             'source': 'helius_primary',
                             'method': 'helius_transactions_api',
-                            'wallet_address': wallet_address,
-                            'timestamp_accuracy': 'high'
+                            'wallet_address': wallet_address
                         }
                     else:
                         logger.warning(f"⚠️ HELIUS: No trading transactions found in recent history")
@@ -209,8 +204,7 @@ class ZeusAPIManager:
     
     def _find_latest_trading_timestamp(self, transactions: List[Dict[str, Any]]) -> Optional[int]:
         """
-        FIXED: Find the latest TRADING transaction timestamp from Helius data.
-        Looks for swap/trade transactions, not just any transaction.
+        Find the latest TRADING transaction timestamp from Helius data.
         """
         try:
             latest_trade_timestamp = None
@@ -226,7 +220,6 @@ class ZeusAPIManager:
                     tx_timestamp = tx['blockTime']
                 elif 'slot' in tx:
                     # Convert slot to approximate timestamp if needed
-                    # This is a fallback - slots are ~400ms apart
                     continue  # Skip slot-based estimation for now
                 
                 if not tx_timestamp:
@@ -269,7 +262,7 @@ class ZeusAPIManager:
                         if program_id in [
                             '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8',  # Raydium
                             'JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo',   # Jupiter
-                            '9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP',  # Orca
+                            '9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfQM9H24wFSUt1Mp8',  # Orca
                             'EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o',  # Serum
                         ]:
                             return True
@@ -282,9 +275,16 @@ class ZeusAPIManager:
             logger.debug(f"Error checking if transaction is trading: {str(e)}")
             return True  # Default to True to be inclusive
     
-    def get_wallet_trading_stats(self, wallet_address: str) -> Dict[str, Any]:
+    def get_wallet_trading_stats(self, wallet_address: str, period: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get wallet trading statistics from Cielo Finance Trading Stats API.
+        Get wallet trading statistics from Cielo Finance Trading Stats API with period support.
+        
+        Args:
+            wallet_address: Wallet address to analyze
+            period: Optional period ('1d', '7d', '30d', 'max'). If None, gets all periods.
+        
+        Returns:
+            Dict with trading stats including period-specific ROI/PnL data
         """
         try:
             if not self.cielo_api_key:
@@ -296,10 +296,17 @@ class ZeusAPIManager:
             
             self.api_stats['cielo']['calls'] += 1
             
-            # Use correct Trading Stats endpoint
+            # Use Trading Stats endpoint with period support
             url = f"{self.cielo_base_url}/{wallet_address}/trading-stats"
             
-            logger.info(f"🏦 Calling Cielo Trading Stats API: {url}")
+            # Add period parameter if specified
+            params = {}
+            if period:
+                params['period'] = period
+                logger.info(f"🏦 Calling Cielo Trading Stats API with period {period}: {url}")
+            else:
+                logger.info(f"🏦 Calling Cielo Trading Stats API (all periods): {url}")
+            
             logger.debug(f"Using API key: {self.cielo_api_key[:12]}...")
             
             # Try different authentication methods for Cielo API
@@ -325,7 +332,7 @@ class ZeusAPIManager:
                 logger.debug(f"Trying Cielo auth method {i}/{len(auth_methods)}: {auth_method}")
                 
                 try:
-                    response = self.session.get(url, headers=headers, timeout=30)
+                    response = self.session.get(url, headers=headers, params=params, timeout=30)
                     
                     logger.debug(f"Cielo response: HTTP {response.status_code}")
                     
@@ -342,6 +349,17 @@ class ZeusAPIManager:
                             
                             if actual_trading_data:
                                 logger.info(f"📊 Cielo data fields: {list(actual_trading_data.keys())}")
+                                
+                                # Check if we got period-specific data structure
+                                if period:
+                                    logger.info(f"📊 Period-specific data for {period}")
+                                else:
+                                    # Check for nested period structure
+                                    if 'roi' in actual_trading_data and isinstance(actual_trading_data['roi'], dict):
+                                        periods = list(actual_trading_data['roi'].keys())
+                                        logger.info(f"📊 Multi-period data with periods: {periods}")
+                                    else:
+                                        logger.info(f"📊 Single period data structure")
                             
                             return {
                                 'success': True,
@@ -349,6 +367,7 @@ class ZeusAPIManager:
                                 'source': 'cielo_trading_stats',
                                 'auth_method_used': auth_method,
                                 'api_endpoint': 'trading-stats',
+                                'period_requested': period,
                                 'wallet_address': wallet_address,
                                 'response_timestamp': int(time.time()),
                                 'raw_response': response_data
@@ -628,8 +647,7 @@ class ZeusAPIManager:
             'api_status': {},
             'system_ready': True,
             'wallet_compatible': False,
-            'token_analysis_ready': False,
-            'timestamp_accuracy': 'none'
+            'token_analysis_ready': False
         }
         
         # Check REQUIRED APIs
@@ -661,10 +679,6 @@ class ZeusAPIManager:
         # System capabilities
         if self.cielo_api_key and self.helius_api_key:
             status['wallet_compatible'] = True
-            status['timestamp_accuracy'] = 'high'
-        elif self.cielo_api_key:
-            status['wallet_compatible'] = True
-            status['timestamp_accuracy'] = 'low'
         
         return status
     

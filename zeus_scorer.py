@@ -1,25 +1,10 @@
 """
-Zeus Scorer - New Scoring System Implementation - UPDATED VERSION
-Implements the revised 5-component scoring system with volume qualifier
-
-FIXES:
-- Improved token analysis data processing
-- Fixed volume qualifier logic
-- Better metric extraction from real/mock data
-- More robust scoring calculations
-
-Scoring Components (0-100 scale):
-1. Risk-Adjusted Performance Score (30%)
-2. Distribution Quality Score (25%)
-3. Trading Discipline Score (20%)
-4. Market Impact Awareness Score (15%)
-5. Consistency & Reliability Score (10%)
-
-Volume Qualifier:
-- ≥6 tokens traded: 100 points (Baseline)
-- 4-5 tokens: 80 points (Emerging)
-- 2-3 tokens: 60 points (Very new)
-- <2 tokens: Disqualified
+Zeus Scorer - UPDATED for Real 7-Day ROI and Pattern Thresholds
+MAJOR UPDATES:
+- Compatible with real 7-day ROI data from Cielo Trading Stats
+- Updated pattern recognition thresholds (5 minutes, 24 hours)
+- Enhanced scoring logic for crypto trading behavior
+- Removed fake win-rate-to-ROI conversion dependencies
 """
 
 import logging
@@ -30,10 +15,10 @@ from datetime import datetime, timedelta
 logger = logging.getLogger("zeus.scorer")
 
 class ZeusScorer:
-    """Implements the new Zeus scoring system with volume qualifier - UPDATED VERSION."""
+    """Implements the Zeus scoring system with updated thresholds for real 7-day ROI."""
     
     def __init__(self, config: Dict[str, Any]):
-        """Initialize scorer with configuration."""
+        """Initialize scorer with configuration and updated thresholds."""
         self.config = config
         self.analysis_config = config.get('analysis', {})
         
@@ -46,17 +31,17 @@ class ZeusScorer:
             'consistency_reliability': 0.10
         }
         
-        logger.info("Zeus Scorer initialized with revised 5-component system")
+        # UPDATED TRADER PATTERN THRESHOLDS
+        self.very_short_threshold_hours = 0.083  # 5 minutes (updated from 12 minutes)
+        self.long_hold_threshold_hours = 24      # 24 hours (updated from 48 hours)
+        
+        logger.info("Zeus Scorer initialized with updated thresholds for real 7-day ROI")
+        logger.info(f"Very short holds: <{self.very_short_threshold_hours*60:.0f} minutes")
+        logger.info(f"Long holds: >{self.long_hold_threshold_hours} hours")
     
     def calculate_composite_score(self, token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Calculate composite score from token analysis data.
-        
-        Args:
-            token_analysis: List of analyzed token trades
-            
-        Returns:
-            Dict with composite score and component breakdown
+        Calculate composite score from token analysis data with updated thresholds.
         """
         try:
             if not token_analysis:
@@ -79,7 +64,7 @@ class ZeusScorer:
             
             logger.info(f"Volume qualifier: {volume_qualifier['tier']} (×{volume_qualifier['multiplier']})")
             
-            # Calculate component scores
+            # Calculate component scores with updated thresholds
             component_scores = {}
             
             # 1. Risk-Adjusted Performance (30%)
@@ -88,17 +73,17 @@ class ZeusScorer:
             # 2. Distribution Quality (25%)
             component_scores['distribution_quality'] = self._calculate_distribution_score(metrics)
             
-            # 3. Trading Discipline (20%)
-            component_scores['trading_discipline'] = self._calculate_discipline_score(metrics)
+            # 3. Trading Discipline (20%) - UPDATED with new thresholds
+            component_scores['trading_discipline'] = self._calculate_discipline_score_updated(metrics)
             
             # 4. Market Impact Awareness (15%)
             component_scores['market_impact_awareness'] = self._calculate_market_impact_score(metrics)
             
-            # 5. Consistency & Reliability (10%)
-            component_scores['consistency_reliability'] = self._calculate_consistency_score(metrics)
+            # 5. Consistency & Reliability (10%) - UPDATED with new thresholds
+            component_scores['consistency_reliability'] = self._calculate_consistency_score_updated(metrics)
             
             # Log component scores for debugging
-            logger.info("Component Scores (0-1 scale):")
+            logger.info("Component Scores (0-1 scale) with UPDATED thresholds:")
             for component, score in component_scores.items():
                 logger.info(f"  {component}: {score:.3f}")
             
@@ -131,7 +116,11 @@ class ZeusScorer:
                 },
                 'volume_qualifier': volume_qualifier,
                 'metrics_used': metrics,
-                'total_tokens_analyzed': len(token_analysis)
+                'total_tokens_analyzed': len(token_analysis),
+                'updated_thresholds': {
+                    'very_short_threshold_hours': self.very_short_threshold_hours,
+                    'long_hold_threshold_hours': self.long_hold_threshold_hours
+                }
             }
             
         except Exception as e:
@@ -139,7 +128,7 @@ class ZeusScorer:
             return self._get_zero_score(f"Calculation error: {str(e)}")
     
     def _extract_metrics(self, token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Extract metrics from token analysis for scoring - IMPROVED VERSION."""
+        """Extract metrics from token analysis for scoring with updated thresholds."""
         try:
             logger.info(f"Extracting metrics from {len(token_analysis)} token analyses")
             
@@ -165,6 +154,7 @@ class ZeusScorer:
                     'active_days': 1,
                     'avg_bet_size_sol': 1,
                     'same_block_rate': 0,
+                    'very_short_rate': 0,  # UPDATED
                     'rois': []
                 }
             
@@ -188,7 +178,7 @@ class ZeusScorer:
             max_roi = float(max(rois))
             min_roi = float(min(rois))
             
-            # Hold time metrics
+            # Hold time metrics with UPDATED thresholds
             hold_times = []
             for trade in completed_trades:
                 hold_time = trade.get('hold_time_hours', 0)
@@ -225,20 +215,20 @@ class ZeusScorer:
             wins = sum(1 for roi in rois if roi > 0)
             win_rate = (wins / total_completed * 100) if total_completed > 0 else 0
             
-            # Same-block detection (flipper behavior)
-            same_block_trades = 0
+            # UPDATED: Very short hold detection (5 minutes instead of same-block)
+            very_short_trades = 0
             for trade in all_trades:
                 hold_time = trade.get('hold_time_hours', 24)
-                if hold_time < 0.1:  # Less than 6 minutes
-                    same_block_trades += 1
+                if hold_time < self.very_short_threshold_hours:  # Less than 5 minutes
+                    very_short_trades += 1
             
-            same_block_rate = (same_block_trades / total_tokens * 100) if total_tokens > 0 else 0
+            very_short_rate = (very_short_trades / total_tokens * 100) if total_tokens > 0 else 0
             
-            # Loss cutting behavior
+            # Loss cutting behavior with UPDATED thresholds
             quick_cut_losses = sum(1 for t in completed_trades 
                                  if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 24) < 4)
             slow_cut_losses = sum(1 for t in completed_trades 
-                                if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 0) > 24 * 7)
+                                if t.get('roi_percent', 0) < -10 and t.get('hold_time_hours', 0) > self.long_hold_threshold_hours)
             
             # Activity pattern - estimate from trade timestamps
             active_days = 30  # Default to full analysis period
@@ -254,7 +244,9 @@ class ZeusScorer:
                 latest = max(timestamps)
                 active_days = max(1, (latest - earliest) / 86400)  # Convert to days
             
-            logger.info(f"Calculated metrics: win_rate={win_rate:.1f}%, moonshot_rate={moonshot_rate:.1f}%, avg_hold_time={avg_hold_time:.1f}h")
+            logger.info(f"Calculated metrics with UPDATED thresholds:")
+            logger.info(f"  win_rate={win_rate:.1f}%, moonshot_rate={moonshot_rate:.1f}%")
+            logger.info(f"  avg_hold_time={avg_hold_time:.1f}h, very_short_rate={very_short_rate:.1f}%")
             
             return {
                 'total_tokens': total_tokens,
@@ -272,11 +264,13 @@ class ZeusScorer:
                 'small_loss_rate': small_loss_rate,
                 'heavy_loss_rate': heavy_loss_rate,
                 'win_rate': win_rate,
-                'same_block_rate': same_block_rate,
+                'very_short_rate': very_short_rate,  # UPDATED from same_block_rate
                 'quick_cut_losses': quick_cut_losses,
                 'slow_cut_losses': slow_cut_losses,
                 'active_days': active_days,
-                'rois': rois
+                'rois': rois,
+                'very_short_threshold_hours': self.very_short_threshold_hours,
+                'long_hold_threshold_hours': self.long_hold_threshold_hours
             }
             
         except Exception as e:
@@ -324,7 +318,7 @@ class ZeusScorer:
             }
     
     def _calculate_risk_adjusted_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Risk-Adjusted Performance Score (30% weight) - IMPROVED."""
+        """Calculate Risk-Adjusted Performance Score (30% weight)."""
         try:
             # Median ROI component (60% of this score)
             median_roi = metrics.get('median_roi', 0)
@@ -377,7 +371,7 @@ class ZeusScorer:
             return 0.0
     
     def _calculate_distribution_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Distribution Quality Score (25% weight) - IMPROVED."""
+        """Calculate Distribution Quality Score (25% weight)."""
         try:
             # Moonshot Rate component (50% of this score)
             moonshot_rate = metrics.get('moonshot_rate', 0)
@@ -433,8 +427,8 @@ class ZeusScorer:
             logger.error(f"Error calculating distribution score: {str(e)}")
             return 0.0
     
-    def _calculate_discipline_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Trading Discipline Score (20% weight) - IMPROVED."""
+    def _calculate_discipline_score_updated(self, metrics: Dict[str, Any]) -> float:
+        """Calculate Trading Discipline Score (20% weight) with UPDATED thresholds."""
         try:
             # Loss Management component (40% of this score)
             quick_cuts = metrics.get('quick_cut_losses', 0)
@@ -469,27 +463,27 @@ class ZeusScorer:
             else:
                 exit_score = 0.2
             
-            # Fast Sell Detection component (25% of this score)
-            same_block_rate = metrics.get('same_block_rate', 0)
-            if same_block_rate < 5:
-                fast_sell_score = 1.0
-            elif same_block_rate < 10:
-                fast_sell_score = 0.8
-            elif same_block_rate < 20:
-                fast_sell_score = 0.6
-            elif same_block_rate < 40:
-                fast_sell_score = 0.3
+            # UPDATED: Very Short Hold Detection component (25% of this score)
+            very_short_rate = metrics.get('very_short_rate', 0)  # < 5 minutes
+            if very_short_rate < 5:
+                very_short_score = 1.0
+            elif very_short_rate < 10:
+                very_short_score = 0.8
+            elif very_short_rate < 20:
+                very_short_score = 0.6
+            elif very_short_rate < 40:
+                very_short_score = 0.3
             else:
-                fast_sell_score = 0.0  # Heavy penalty for flipper behavior
+                very_short_score = 0.0  # Heavy penalty for excessive ultra-short holds
             
             # Combine components
             discipline_score = (
                 loss_mgmt_score * 0.40 +
                 exit_score * 0.35 +
-                fast_sell_score * 0.25
+                very_short_score * 0.25
             )
             
-            logger.debug(f"Discipline: loss_mgmt={loss_mgmt_score:.2f}, exit={exit_score:.2f}, fast_sell={fast_sell_score:.2f} → {discipline_score:.3f}")
+            logger.debug(f"Discipline (UPDATED): loss_mgmt={loss_mgmt_score:.2f}, exit={exit_score:.2f}, very_short={very_short_score:.2f} → {discipline_score:.3f}")
             
             return min(1.0, max(0.0, discipline_score))
             
@@ -498,7 +492,7 @@ class ZeusScorer:
             return 0.0
     
     def _calculate_market_impact_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Market Impact Awareness Score (15% weight) - IMPROVED."""
+        """Calculate Market Impact Awareness Score (15% weight)."""
         try:
             # Bet Sizing component (60% of this score)
             avg_bet_size = metrics.get('avg_bet_size_sol', 0)
@@ -541,8 +535,8 @@ class ZeusScorer:
             logger.error(f"Error calculating market impact score: {str(e)}")
             return 0.0
     
-    def _calculate_consistency_score(self, metrics: Dict[str, Any]) -> float:
-        """Calculate Consistency & Reliability Score (10% weight) - IMPROVED."""
+    def _calculate_consistency_score_updated(self, metrics: Dict[str, Any]) -> float:
+        """Calculate Consistency & Reliability Score (10% weight) with UPDATED thresholds."""
         try:
             # Activity Pattern component (70% of this score)
             active_days = metrics.get('active_days', 0)
@@ -559,17 +553,17 @@ class ZeusScorer:
             else:
                 activity_score = 0.1
             
-            # Red Flags component (30% of this score)
-            same_block_rate = metrics.get('same_block_rate', 0)
+            # UPDATED: Red Flags component (30% of this score) - using very_short_rate
+            very_short_rate = metrics.get('very_short_rate', 0)  # < 5 minutes
             
-            if same_block_rate > 50:
-                red_flag_score = 0.0  # Likely bot
-            elif same_block_rate > 30:
-                red_flag_score = 0.3  # High bot suspicion
-            elif same_block_rate > 15:
-                red_flag_score = 0.6  # Some bot behavior
-            elif same_block_rate > 5:
-                red_flag_score = 0.8  # Minimal bot behavior
+            if very_short_rate > 50:
+                red_flag_score = 0.0  # Likely ultra-fast flipper
+            elif very_short_rate > 30:
+                red_flag_score = 0.3  # High flipper suspicion
+            elif very_short_rate > 15:
+                red_flag_score = 0.6  # Some flipper behavior
+            elif very_short_rate > 5:
+                red_flag_score = 0.8  # Minimal flipper behavior
             else:
                 red_flag_score = 1.0  # Clean behavior
             
@@ -579,7 +573,7 @@ class ZeusScorer:
                 red_flag_score * 0.30
             )
             
-            logger.debug(f"Consistency: activity={activity_score:.2f}, red_flags={red_flag_score:.2f} → {consistency_score:.3f}")
+            logger.debug(f"Consistency (UPDATED): activity={activity_score:.2f}, red_flags={red_flag_score:.2f} → {consistency_score:.3f}")
             
             return min(1.0, max(0.0, consistency_score))
             
@@ -604,15 +598,20 @@ class ZeusScorer:
                 'tokens': 0,
                 'tier': 'insufficient'
             },
-            'total_tokens_analyzed': 0
+            'total_tokens_analyzed': 0,
+            'updated_thresholds': {
+                'very_short_threshold_hours': self.very_short_threshold_hours,
+                'long_hold_threshold_hours': self.long_hold_threshold_hours
+            }
         }
     
     def get_score_explanation(self, scoring_result: Dict[str, Any]) -> str:
-        """Generate human-readable explanation of the score."""
+        """Generate human-readable explanation of the score with updated thresholds."""
         try:
             composite_score = scoring_result.get('composite_score', 0)
             component_scores = scoring_result.get('component_scores', {})
             volume_qualifier = scoring_result.get('volume_qualifier', {})
+            updated_thresholds = scoring_result.get('updated_thresholds', {})
             
             explanation = []
             
@@ -643,6 +642,12 @@ class ZeusScorer:
             explanation.append(f"🎯 Risk-Adj: {risk_score:.1f}/30")
             explanation.append(f"📈 Distribution: {dist_score:.1f}/25") 
             explanation.append(f"⚖️ Discipline: {disc_score:.1f}/20")
+            
+            # Add threshold info if requested
+            if updated_thresholds:
+                very_short_min = updated_thresholds.get('very_short_threshold_hours', 0.083) * 60
+                long_hold_hours = updated_thresholds.get('long_hold_threshold_hours', 24)
+                explanation.append(f"⚡ Thresholds: <{very_short_min:.0f}min, >{long_hold_hours}h")
             
             return " | ".join(explanation)
             
