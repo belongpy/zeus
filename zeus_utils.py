@@ -1,14 +1,14 @@
 """
-Zeus Utilities - Helper Functions and Common Operations
+Zeus Utilities - Enhanced for Token PnL & Direct Field Extraction
 Collection of utility functions used throughout Zeus system
 
-Features:
-- Wallet address validation
-- Data formatting and conversion
-- Time and date utilities
-- File operations
-- Performance monitoring
-- Error handling helpers
+NEW FEATURES:
+- Token PnL analysis utilities
+- Direct field extraction helpers
+- Pattern recognition utilities
+- Smart TP/SL calculation functions
+- Enhanced validation for new data types
+- Cost tracking and estimation utilities
 """
 
 import os
@@ -25,7 +25,7 @@ import base58
 logger = logging.getLogger("zeus.utils")
 
 class ZeusUtils:
-    """Collection of utility functions for Zeus system."""
+    """Collection of utility functions for Zeus system with Token PnL and direct field features."""
     
     @staticmethod
     def validate_solana_address(address: str) -> Dict[str, Any]:
@@ -110,7 +110,7 @@ class ZeusUtils:
     @staticmethod
     def format_percentage(value: float, decimals: int = 1) -> str:
         """
-        Format percentage value for display.
+        Format percentage value for display with updated precision.
         
         Args:
             value: Percentage value
@@ -128,13 +128,13 @@ class ZeusUtils:
             return "0.0%"
     
     @staticmethod
-    def format_sol_amount(amount: float, decimals: int = 4) -> str:
+    def format_sol_amount(amount: float, decimals: int = 1) -> str:
         """
-        Format SOL amount for display.
+        Format SOL amount for display with updated precision.
         
         Args:
             amount: SOL amount
-            decimals: Number of decimal places
+            decimals: Number of decimal places (updated default to 1)
             
         Returns:
             Formatted SOL string
@@ -150,12 +150,13 @@ class ZeusUtils:
             return "0 SOL"
     
     @staticmethod
-    def format_duration(seconds: float) -> str:
+    def format_duration(seconds: float, use_updated_thresholds: bool = True) -> str:
         """
-        Format duration in human-readable format.
+        Format duration in human-readable format with updated thresholds.
         
         Args:
             seconds: Duration in seconds
+            use_updated_thresholds: Use updated thresholds (5min/24hr)
             
         Returns:
             Formatted duration string
@@ -165,12 +166,18 @@ class ZeusUtils:
                 return f"{seconds:.1f}s"
             elif seconds < 3600:
                 minutes = seconds / 60
+                # Mark very short holds with updated threshold
+                if use_updated_thresholds and minutes < 5:
+                    return f"{minutes:.1f}m ⚡"  # Very short indicator
                 return f"{minutes:.1f}m"
             elif seconds < 86400:
                 hours = seconds / 3600
                 return f"{hours:.1f}h"
             else:
                 days = seconds / 86400
+                # Mark long holds with updated threshold
+                if use_updated_thresholds and days >= 1:  # 24+ hours
+                    return f"{days:.1f}d 🔒"  # Long hold indicator
                 return f"{days:.1f}d"
         except:
             return "0s"
@@ -178,7 +185,7 @@ class ZeusUtils:
     @staticmethod
     def calculate_roi_percentage(initial_value: float, final_value: float) -> float:
         """
-        Calculate ROI percentage.
+        Calculate ROI percentage with enhanced precision.
         
         Args:
             initial_value: Initial investment value
@@ -190,9 +197,309 @@ class ZeusUtils:
         try:
             if initial_value <= 0:
                 return 0.0
-            return ((final_value / initial_value) - 1) * 100
+            return round(((final_value / initial_value) - 1) * 100, 2)
         except:
             return 0.0
+    
+    @staticmethod
+    def identify_trader_pattern(metrics: Dict[str, Any], use_updated_thresholds: bool = True) -> str:
+        """
+        Identify trader pattern based on metrics with updated thresholds.
+        
+        Args:
+            metrics: Trading metrics
+            use_updated_thresholds: Use updated thresholds (5min/24hr)
+            
+        Returns:
+            Identified pattern
+        """
+        try:
+            avg_hold_time_hours = metrics.get('avg_hold_time_hours', 24)
+            avg_roi = metrics.get('avg_roi', 0)
+            moonshot_rate = metrics.get('moonshot_rate', 0)
+            win_rate = metrics.get('win_rate', 50)
+            total_trades = metrics.get('total_trades', 0)
+            
+            # Updated thresholds
+            if use_updated_thresholds:
+                very_short_threshold = 0.083  # 5 minutes
+                long_hold_threshold = 24      # 24 hours
+            else:
+                very_short_threshold = 0.2    # 12 minutes (old)
+                long_hold_threshold = 48      # 48 hours (old)
+            
+            # Pattern identification with updated thresholds
+            if avg_hold_time_hours < very_short_threshold:
+                return 'flipper'
+            elif avg_hold_time_hours < 1:
+                return 'sniper' if avg_roi > 30 else 'impulsive_trader'
+            elif moonshot_rate > 10 and avg_roi > 100:
+                return 'gem_hunter'
+            elif avg_hold_time_hours > long_hold_threshold:
+                return 'position_trader' if avg_roi > 50 else 'bag_holder'
+            elif win_rate > 60 and avg_roi > 20:
+                return 'consistent_trader'
+            else:
+                return 'mixed_strategy'
+                
+        except Exception as e:
+            logger.error(f"Error identifying trader pattern: {str(e)}")
+            return 'analysis_error'
+    
+    @staticmethod
+    def calculate_smart_tp_sl(pattern: str, actual_performance: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Calculate smart TP/SL levels based on trader pattern and actual performance.
+        
+        Args:
+            pattern: Identified trader pattern
+            actual_performance: Actual performance metrics from Token PnL analysis
+            
+        Returns:
+            Dict with smart TP/SL recommendations
+        """
+        try:
+            # Default pattern-based recommendations
+            pattern_defaults = {
+                'flipper': {
+                    'tp1': 30, 'tp2': 60, 'tp3': 120, 'stop_loss': -15,
+                    'reasoning': 'Flipper pattern - Quick profits with tight SL'
+                },
+                'gem_hunter': {
+                    'tp1': 200, 'tp2': 500, 'tp3': 1000, 'stop_loss': -50,
+                    'reasoning': 'Gem hunter pattern - High TPs with patient SL'
+                },
+                'consistent_trader': {
+                    'tp1': 75, 'tp2': 150, 'tp3': 300, 'stop_loss': -25,
+                    'reasoning': 'Consistent pattern - Balanced TP/SL'
+                },
+                'position_trader': {
+                    'tp1': 100, 'tp2': 300, 'tp3': 600, 'stop_loss': -40,
+                    'reasoning': 'Position trader - Patient approach'
+                }
+            }
+            
+            base_recommendation = pattern_defaults.get(pattern, pattern_defaults['consistent_trader'])
+            
+            # Enhance with actual performance data if available
+            if actual_performance and actual_performance.get('based_on_actual_exits'):
+                actual_tp1 = actual_performance.get('avg_tp1', base_recommendation['tp1'])
+                actual_tp2 = actual_performance.get('avg_tp2', base_recommendation['tp2'])
+                actual_sl = actual_performance.get('avg_stop_loss', base_recommendation['stop_loss'])
+                
+                # Apply safety buffers
+                safety_tp1 = int(actual_tp1 * 1.1)  # 10% buffer
+                safety_tp2 = int(actual_tp2 * 1.1)
+                safety_tp3 = int(actual_tp2 * 2.0)  # Double TP2 for TP3
+                safety_sl = int(actual_sl * 0.9)    # 10% tighter SL
+                
+                return {
+                    'tp1': safety_tp1,
+                    'tp2': safety_tp2,
+                    'tp3': safety_tp3,
+                    'stop_loss': safety_sl,
+                    'reasoning': f'{pattern} pattern with actual exit data + 10% safety buffer',
+                    'based_on_actual_exits': True,
+                    'original_performance': actual_performance
+                }
+            
+            return {
+                **base_recommendation,
+                'based_on_actual_exits': False,
+                'pattern_based': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating smart TP/SL: {str(e)}")
+            return {
+                'tp1': 75, 'tp2': 200, 'tp3': 500, 'stop_loss': -35,
+                'reasoning': f'Default due to error: {str(e)}',
+                'based_on_actual_exits': False
+            }
+    
+    @staticmethod
+    def validate_cielo_field_data(data: Dict[str, Any], field_name: str, 
+                                expected_type: type, expected_range: Tuple[float, float] = None) -> Dict[str, Any]:
+        """
+        Validate Cielo API field data with enhanced validation.
+        
+        Args:
+            data: Cielo API response data
+            field_name: Field name to validate
+            expected_type: Expected data type
+            expected_range: Expected value range (min, max)
+            
+        Returns:
+            Validation result
+        """
+        try:
+            if field_name not in data:
+                return {
+                    'valid': False,
+                    'error': f'Field {field_name} not found',
+                    'field_name': field_name
+                }
+            
+            value = data[field_name]
+            
+            # Type validation
+            if not isinstance(value, expected_type):
+                return {
+                    'valid': False,
+                    'error': f'Field {field_name} has type {type(value).__name__}, expected {expected_type.__name__}',
+                    'field_name': field_name,
+                    'actual_value': value
+                }
+            
+            # Range validation
+            if expected_range and isinstance(value, (int, float)):
+                min_val, max_val = expected_range
+                if not (min_val <= value <= max_val):
+                    return {
+                        'valid': False,
+                        'error': f'Field {field_name} value {value} outside expected range [{min_val}, {max_val}]',
+                        'field_name': field_name,
+                        'actual_value': value,
+                        'expected_range': expected_range
+                    }
+            
+            return {
+                'valid': True,
+                'field_name': field_name,
+                'value': value,
+                'type': type(value).__name__
+            }
+            
+        except Exception as e:
+            return {
+                'valid': False,
+                'error': f'Validation error for {field_name}: {str(e)}',
+                'field_name': field_name
+            }
+    
+    @staticmethod
+    def extract_direct_field_value(data: Dict[str, Any], field_names: List[str], 
+                                 default_value: Any = None, 
+                                 validation_func: callable = None) -> Dict[str, Any]:
+        """
+        Extract direct field value from Cielo API response with multiple field name options.
+        
+        Args:
+            data: API response data
+            field_names: List of possible field names (in priority order)
+            default_value: Default value if no field found
+            validation_func: Optional validation function
+            
+        Returns:
+            Extraction result
+        """
+        try:
+            for field_name in field_names:
+                if field_name in data and data[field_name] is not None:
+                    value = data[field_name]
+                    
+                    # Apply validation if provided
+                    if validation_func:
+                        try:
+                            if not validation_func(value):
+                                continue
+                        except:
+                            continue
+                    
+                    return {
+                        'success': True,
+                        'field_name': field_name,
+                        'value': value,
+                        'type': type(value).__name__
+                    }
+            
+            # No valid field found
+            return {
+                'success': False,
+                'field_names_tried': field_names,
+                'value': default_value,
+                'error': f'None of the fields {field_names} found or valid'
+            }
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'field_names_tried': field_names,
+                'value': default_value,
+                'error': f'Field extraction error: {str(e)}'
+            }
+    
+    @staticmethod
+    def calculate_api_cost_estimate(wallet_count: int, features_enabled: Dict[str, bool]) -> Dict[str, Any]:
+        """
+        Calculate estimated API costs based on enabled features.
+        
+        Args:
+            wallet_count: Number of wallets to analyze
+            features_enabled: Dict of enabled features
+            
+        Returns:
+            Cost estimate breakdown
+        """
+        try:
+            # Default API costs
+            api_costs = {
+                'cielo_trading_stats': 30,
+                'cielo_token_pnl': 5,
+                'birdeye_token_price': 1,
+                'helius_transactions': 0  # Free tier available
+            }
+            
+            cost_breakdown = {}
+            total_cost = 0
+            
+            # Trading Stats (REQUIRED)
+            trading_stats_cost = wallet_count * api_costs['cielo_trading_stats']
+            cost_breakdown['trading_stats'] = {
+                'cost_per_wallet': api_costs['cielo_trading_stats'],
+                'total_cost': trading_stats_cost,
+                'required': True
+            }
+            total_cost += trading_stats_cost
+            
+            # Token PnL Analysis (NEW FEATURE)
+            if features_enabled.get('enable_token_pnl_analysis', True):
+                token_pnl_cost = wallet_count * api_costs['cielo_token_pnl']
+                cost_breakdown['token_pnl'] = {
+                    'cost_per_wallet': api_costs['cielo_token_pnl'],
+                    'total_cost': token_pnl_cost,
+                    'required': False,
+                    'feature': 'Token PnL Analysis'
+                }
+                total_cost += token_pnl_cost
+            
+            # Birdeye (OPTIONAL)
+            if features_enabled.get('enable_birdeye_analysis', False):
+                birdeye_cost = wallet_count * api_costs['birdeye_token_price']
+                cost_breakdown['birdeye'] = {
+                    'cost_per_wallet': api_costs['birdeye_token_price'],
+                    'total_cost': birdeye_cost,
+                    'required': False,
+                    'feature': 'Enhanced Token Analysis'
+                }
+                total_cost += birdeye_cost
+            
+            return {
+                'total_cost': total_cost,
+                'cost_per_wallet': round(total_cost / wallet_count, 2) if wallet_count > 0 else 0,
+                'cost_breakdown': cost_breakdown,
+                'wallet_count': wallet_count,
+                'estimated_duration_minutes': wallet_count * 0.5,  # 30 seconds per wallet
+                'features_enabled': features_enabled
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating API cost estimate: {str(e)}")
+            return {
+                'total_cost': 0,
+                'error': str(e),
+                'wallet_count': wallet_count
+            }
     
     @staticmethod
     def safe_divide(numerator: float, denominator: float, default: float = 0.0) -> float:
@@ -247,12 +554,13 @@ class ZeusUtils:
             return int(time.time())
     
     @staticmethod
-    def get_time_ago_string(timestamp: Union[int, float]) -> str:
+    def get_time_ago_string(timestamp: Union[int, float], use_updated_format: bool = True) -> str:
         """
-        Get human-readable time ago string.
+        Get human-readable time ago string with updated precision.
         
         Args:
             timestamp: Unix timestamp
+            use_updated_format: Use updated format with 1 decimal precision
             
         Returns:
             Time ago string
@@ -263,13 +571,19 @@ class ZeusUtils:
             diff = now - dt
             
             if diff.days > 0:
+                if use_updated_format:
+                    return f"{diff.days + diff.seconds/86400:.1f}d ago"
                 return f"{diff.days}d ago"
             elif diff.seconds > 3600:
-                hours = diff.seconds // 3600
-                return f"{hours}h ago"
+                hours = diff.seconds / 3600
+                if use_updated_format:
+                    return f"{hours:.1f}h ago"
+                return f"{int(hours)}h ago"
             elif diff.seconds > 60:
-                minutes = diff.seconds // 60
-                return f"{minutes}m ago"
+                minutes = diff.seconds / 60
+                if use_updated_format:
+                    return f"{minutes:.1f}m ago"
+                return f"{int(minutes)}m ago"
             else:
                 return f"{diff.seconds}s ago"
         except:
@@ -332,9 +646,10 @@ class ZeusUtils:
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             
             with open(file_path, 'w', encoding='utf-8') as f:
-                f.write("# Zeus Wallet List\n")
+                f.write("# Zeus Wallet List - Token PnL Analysis Enabled\n")
                 f.write(f"# Generated: {datetime.now().isoformat()}\n")
-                f.write(f"# Total wallets: {len(wallets)}\n\n")
+                f.write(f"# Total wallets: {len(wallets)}\n")
+                f.write(f"# Features: Direct field extraction, Smart TP/SL\n\n")
                 
                 for wallet in wallets:
                     f.write(f"{wallet}\n")
@@ -375,19 +690,25 @@ class ZeusUtils:
             return file_path
     
     @staticmethod
-    def generate_filename_with_timestamp(base_name: str, extension: str = "csv") -> str:
+    def generate_filename_with_timestamp(base_name: str, extension: str = "csv", 
+                                       include_features: bool = True) -> str:
         """
-        Generate filename with timestamp.
+        Generate filename with timestamp and optional feature indicators.
         
         Args:
             base_name: Base filename
             extension: File extension
+            include_features: Include feature indicators in filename
             
         Returns:
-            Filename with timestamp
+            Filename with timestamp and features
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return f"{base_name}_{timestamp}.{extension}"
+        
+        if include_features:
+            return f"{base_name}_token_pnl_smart_tp_sl_{timestamp}.{extension}"
+        else:
+            return f"{base_name}_{timestamp}.{extension}"
     
     @staticmethod
     def hash_wallet_address(address: str) -> str:
@@ -430,7 +751,7 @@ class ZeusUtils:
     @staticmethod
     def calculate_statistics(values: List[float]) -> Dict[str, float]:
         """
-        Calculate basic statistics for a list of values.
+        Calculate basic statistics for a list of values with enhanced precision.
         
         Args:
             values: List of numeric values
@@ -456,25 +777,75 @@ class ZeusUtils:
             
             return {
                 'count': len(values),
-                'mean': statistics.mean(values),
-                'median': statistics.median(values),
-                'std': statistics.stdev(values) if len(values) > 1 else 0,
-                'min': min(values),
-                'max': max(values),
-                'sum': sum(values),
-                'q1': sorted_values[len(sorted_values)//4] if len(sorted_values) > 3 else sorted_values[0],
-                'q3': sorted_values[3*len(sorted_values)//4] if len(sorted_values) > 3 else sorted_values[-1]
+                'mean': round(statistics.mean(values), 2),
+                'median': round(statistics.median(values), 2),
+                'std': round(statistics.stdev(values), 2) if len(values) > 1 else 0,
+                'min': round(min(values), 2),
+                'max': round(max(values), 2),
+                'sum': round(sum(values), 2),
+                'q1': round(sorted_values[len(sorted_values)//4], 2) if len(sorted_values) > 3 else sorted_values[0],
+                'q3': round(sorted_values[3*len(sorted_values)//4], 2) if len(sorted_values) > 3 else sorted_values[-1]
             }
             
         except Exception as e:
             logger.error(f"Error calculating statistics: {str(e)}")
             return {'error': str(e)}
+    
+    @staticmethod
+    def create_feature_status_summary(features_config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create summary of enabled features with their status.
+        
+        Args:
+            features_config: Features configuration
+            
+        Returns:
+            Feature status summary
+        """
+        try:
+            feature_descriptions = {
+                'enable_token_pnl_analysis': 'Token PnL Analysis (5 credits per wallet)',
+                'enable_smart_tp_sl': 'Smart TP/SL Recommendations',
+                'enable_direct_field_extraction': 'Direct Field Extraction (no scaling)',
+                'enable_pattern_based_strategies': 'Pattern-based Strategies',
+                'enable_field_validation': 'Field Validation',
+                'enable_enhanced_transactions': 'Enhanced Transaction Analysis',
+                'enable_price_analysis': 'Price Analysis',
+                'enable_market_cap_analysis': 'Market Cap Analysis',
+                'enable_bot_detection': 'Bot Detection'
+            }
+            
+            enabled_features = []
+            disabled_features = []
+            
+            for feature_key, description in feature_descriptions.items():
+                if features_config.get(feature_key, False):
+                    enabled_features.append(description)
+                else:
+                    disabled_features.append(description)
+            
+            return {
+                'enabled_features': enabled_features,
+                'disabled_features': disabled_features,
+                'enabled_count': len(enabled_features),
+                'total_count': len(feature_descriptions),
+                'feature_percentage': round((len(enabled_features) / len(feature_descriptions)) * 100, 1)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error creating feature status summary: {str(e)}")
+            return {
+                'enabled_features': [],
+                'disabled_features': [],
+                'error': str(e)
+            }
 
 class PerformanceTimer:
-    """Context manager for timing operations."""
+    """Context manager for timing operations with enhanced logging."""
     
-    def __init__(self, operation_name: str = "Operation"):
+    def __init__(self, operation_name: str = "Operation", log_threshold_seconds: float = 1.0):
         self.operation_name = operation_name
+        self.log_threshold_seconds = log_threshold_seconds
         self.start_time = None
         self.end_time = None
     
@@ -490,7 +861,11 @@ class PerformanceTimer:
         if exc_type:
             logger.error(f"{self.operation_name} failed after {duration:.2f}s")
         else:
-            logger.debug(f"{self.operation_name} completed in {duration:.2f}s")
+            # Only log if duration exceeds threshold
+            if duration >= self.log_threshold_seconds:
+                logger.info(f"{self.operation_name} completed in {duration:.2f}s")
+            else:
+                logger.debug(f"{self.operation_name} completed in {duration:.2f}s")
     
     @property
     def duration(self) -> float:
@@ -500,15 +875,18 @@ class PerformanceTimer:
         return 0.0
 
 class RateLimiter:
-    """Simple rate limiter for API calls."""
+    """Enhanced rate limiter for API calls with cost tracking."""
     
-    def __init__(self, calls_per_second: float = 10.0):
+    def __init__(self, calls_per_second: float = 10.0, cost_per_call: float = 0.0):
         self.calls_per_second = calls_per_second
+        self.cost_per_call = cost_per_call
         self.min_interval = 1.0 / calls_per_second if calls_per_second > 0 else 0
         self.last_call_time = 0
+        self.total_calls = 0
+        self.total_cost = 0.0
     
     def wait_if_needed(self) -> None:
-        """Wait if necessary to respect rate limit."""
+        """Wait if necessary to respect rate limit and track costs."""
         if self.min_interval <= 0:
             return
         
@@ -520,13 +898,26 @@ class RateLimiter:
             time.sleep(wait_time)
         
         self.last_call_time = time.time()
+        self.total_calls += 1
+        self.total_cost += self.cost_per_call
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get rate limiter statistics."""
+        return {
+            'total_calls': self.total_calls,
+            'total_cost': self.total_cost,
+            'calls_per_second': self.calls_per_second,
+            'cost_per_call': self.cost_per_call
+        }
 
 class DataCache:
-    """Simple in-memory cache with TTL."""
+    """Enhanced in-memory cache with TTL and size limits."""
     
-    def __init__(self, default_ttl: int = 300):
+    def __init__(self, default_ttl: int = 300, max_size: int = 1000):
         self.cache = {}
         self.default_ttl = default_ttl
+        self.max_size = max_size
+        self.access_times = {}
     
     def get(self, key: str) -> Optional[Any]:
         """Get cached value if not expired."""
@@ -537,41 +928,84 @@ class DataCache:
         
         if time.time() > expiry:
             del self.cache[key]
+            if key in self.access_times:
+                del self.access_times[key]
             return None
         
+        # Update access time for LRU
+        self.access_times[key] = time.time()
         return data
     
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
-        """Set cached value with TTL."""
+        """Set cached value with TTL and size management."""
+        # Enforce size limit
+        if len(self.cache) >= self.max_size:
+            self._evict_oldest()
+        
         ttl = ttl or self.default_ttl
         expiry = time.time() + ttl
         self.cache[key] = (value, expiry)
+        self.access_times[key] = time.time()
+    
+    def _evict_oldest(self) -> None:
+        """Evict oldest accessed item."""
+        if not self.access_times:
+            return
+        
+        oldest_key = min(self.access_times.keys(), key=lambda k: self.access_times[k])
+        del self.cache[oldest_key]
+        del self.access_times[oldest_key]
     
     def clear(self) -> None:
         """Clear all cached values."""
         self.cache.clear()
+        self.access_times.clear()
     
     def size(self) -> int:
         """Get cache size."""
         return len(self.cache)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics."""
+        return {
+            'size': len(self.cache),
+            'max_size': self.max_size,
+            'default_ttl': self.default_ttl,
+            'oldest_access': min(self.access_times.values()) if self.access_times else None,
+            'newest_access': max(self.access_times.values()) if self.access_times else None
+        }
 
-def setup_zeus_logging(level: str = "INFO", log_file: str = "zeus.log") -> None:
+def setup_zeus_logging(level: str = "INFO", log_file: str = "zeus.log", 
+                      enable_enhanced_logging: bool = True) -> None:
     """
-    Setup Zeus logging configuration.
+    Setup Zeus logging configuration with enhanced features.
     
     Args:
         level: Logging level
         log_file: Log file path
+        enable_enhanced_logging: Enable enhanced logging features
     """
     import sys
     
     # Create formatter
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+    if enable_enhanced_logging:
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+        )
+    else:
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
     
-    # Setup file handler
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    # Setup file handler with rotation
+    if enable_enhanced_logging:
+        from logging.handlers import RotatingFileHandler
+        file_handler = RotatingFileHandler(
+            log_file, maxBytes=10*1024*1024, backupCount=3, encoding='utf-8'
+        )
+    else:
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    
     file_handler.setFormatter(formatter)
     
     # Setup console handler
@@ -586,10 +1020,13 @@ def setup_zeus_logging(level: str = "INFO", log_file: str = "zeus.log") -> None:
     
     # Prevent duplicate logs
     root_logger.propagate = False
+    
+    if enable_enhanced_logging:
+        logger.info("Enhanced logging enabled with rotation and detailed formatting")
 
 def create_sample_wallet_file(file_path: str = "wallets.txt") -> bool:
     """
-    Create sample wallet file with example addresses.
+    Create sample wallet file with example addresses and new feature info.
     
     Args:
         file_path: Path to create sample file
@@ -599,9 +1036,15 @@ def create_sample_wallet_file(file_path: str = "wallets.txt") -> bool:
     """
     try:
         sample_wallets = [
-            "# Zeus Sample Wallet List",
+            "# Zeus Sample Wallet List - Token PnL Analysis Enabled",
             "# Add your wallet addresses below (one per line)",
             "# Lines starting with # are comments and will be ignored",
+            "",
+            "# NEW FEATURES:",
+            "# - Token PnL Analysis: Real trade pattern analysis (5 credits per wallet)",
+            "# - Smart TP/SL: Pattern-based recommendations (flippers vs gem hunters)",
+            "# - Direct Field Extraction: No scaling/conversion from Cielo",
+            "# - Updated Thresholds: 5min (very short) | 24hr (long holds)",
             "",
             "# Example wallets (replace with real addresses):",
             "7xG8k9mPqR3nW2sJ5tY8vL4hE6dF1aZ9bN3cM7uV2iK1",
@@ -609,13 +1052,14 @@ def create_sample_wallet_file(file_path: str = "wallets.txt") -> bool:
             "5eF7g8H9i1J2k3L4m5N6o7P8q9R1s2T3u4V5w6X7y8Z9",
             "",
             "# Add your wallets here:",
+            "# Estimated cost: 35 credits per wallet (30 Trading Stats + 5 Token PnL)",
             ""
         ]
         
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(sample_wallets))
         
-        logger.info(f"Created sample wallet file: {file_path}")
+        logger.info(f"Created sample wallet file with NEW FEATURES info: {file_path}")
         return True
         
     except Exception as e:
