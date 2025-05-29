@@ -1,6 +1,13 @@
 """
-Zeus API Manager - Cielo Finance with Authentication
-Fixed 403 logging - authentication attempts now DEBUG level
+Zeus API Manager - FIXED Cielo Finance Trading Stats API Integration
+Based on actual Cielo Finance API documentation at https://developer.cielo.finance/reference/getfeed
+
+FIXES:
+- Use correct Cielo Trading Stats API endpoint
+- Proper authentication handling for Cielo API
+- Return complete API response structure for proper data extraction
+- Fixed 403 authentication attempts (now DEBUG level)
+- Better error handling and response structure
 """
 
 import logging
@@ -12,7 +19,7 @@ from datetime import datetime, timedelta
 logger = logging.getLogger("zeus.api_manager")
 
 class ZeusAPIManager:
-    """Zeus API manager with proper Cielo Finance authentication."""
+    """Zeus API manager with FIXED Cielo Finance Trading Stats API integration."""
     
     def __init__(self, birdeye_api_key: str = "", cielo_api_key: str = "", 
                  helius_api_key: str = "", rpc_url: str = "https://api.mainnet-beta.solana.com"):
@@ -24,7 +31,7 @@ class ZeusAPIManager:
         self.helius_api_key = helius_api_key.strip() if helius_api_key else ""
         self.rpc_url = rpc_url
         
-        # API endpoints
+        # FIXED: Use correct Cielo Finance API endpoints from documentation
         self.cielo_base_url = "https://feed-api.cielo.finance/api/v1"
         self.birdeye_base_url = "https://public-api.birdeye.so"
         self.helius_base_url = f"https://api.helius.xyz/v0" if self.helius_api_key else ""
@@ -63,60 +70,32 @@ class ZeusAPIManager:
         else:
             logger.info("ℹ️ Helius API key not provided")
     
-    def _get_cielo_headers(self) -> Dict[str, str]:
-        """Get headers with API key for Cielo Finance API."""
-        base_headers = {
-            'accept': 'application/json',
-            'Content-Type': 'application/json'
-        }
-        
-        if self.cielo_api_key:
-            # Try different common API key header patterns
-            # We'll test multiple options since the documentation wasn't clear
-            auth_headers = [
-                {'Authorization': f'Bearer {self.cielo_api_key}'},
-                {'Authorization': f'Api-Key {self.cielo_api_key}'},
-                {'X-API-KEY': self.cielo_api_key},
-                {'x-api-key': self.cielo_api_key},
-                {'API-KEY': self.cielo_api_key},
-                {'api-key': self.cielo_api_key},
-                {'apikey': self.cielo_api_key},
-                {'Authorization': self.cielo_api_key}
-            ]
-            
-            # Return the base headers for the first attempt
-            # We'll try different auth methods in the main function
-            return {**base_headers, **auth_headers[0]}
-        
-        return base_headers
-    
     def get_wallet_trading_stats(self, wallet_address: str) -> Dict[str, Any]:
         """
-        Get wallet trading statistics from Cielo Finance API.
-        Tries multiple authentication methods to handle HTTP 403.
-        FIXED: Authentication attempts now DEBUG level to reduce noise.
+        Get wallet trading statistics from Cielo Finance Trading Stats API.
+        FIXED: Uses correct endpoint and returns complete response structure.
+        Based on: https://feed-api.cielo.finance/api/v1/{wallet}/trading-stats
         """
         try:
             if not self.cielo_api_key:
                 return {
                     'success': False,
-                    'error': 'Cielo Finance API key not configured'
+                    'error': 'Cielo Finance API key not configured',
+                    'source': 'cielo_trading_stats'
                 }
             
             self.api_stats['cielo']['calls'] += 1
             
-            # Use exact endpoint from documentation
+            # FIXED: Use correct Trading Stats endpoint from documentation
             url = f"{self.cielo_base_url}/{wallet_address}/trading-stats"
             
-            logger.info(f"Making Cielo API call: {url}")
-            logger.debug(f"Using API key: {self.cielo_api_key[:15]}...")
+            logger.info(f"🔧 Calling Cielo Trading Stats API: {url}")
+            logger.debug(f"Using API key: {self.cielo_api_key[:12]}...")
             
-            # Try different authentication methods
+            # Try different authentication methods for Cielo API
             auth_methods = [
-                {'Authorization': f'Bearer {self.cielo_api_key}'},
                 {'X-API-KEY': self.cielo_api_key},
-                {'x-api-key': self.cielo_api_key},
-                {'API-KEY': self.cielo_api_key},
+                {'Authorization': f'Bearer {self.cielo_api_key}'},
                 {'api-key': self.cielo_api_key},
                 {'apikey': self.cielo_api_key},
                 {'Authorization': f'Api-Key {self.cielo_api_key}'},
@@ -128,7 +107,7 @@ class ZeusAPIManager:
                 'Content-Type': 'application/json'
             }
             
-            # Try each authentication method - FIXED: Now DEBUG level
+            # Try each authentication method
             for i, auth_header in enumerate(auth_methods, 1):
                 headers = {**base_headers, **auth_header}
                 auth_method = list(auth_header.keys())[0]
@@ -141,17 +120,29 @@ class ZeusAPIManager:
                     logger.debug(f"Response: HTTP {response.status_code}")
                     
                     if response.status_code == 200:
-                        data = response.json()
-                        self.api_stats['cielo']['success'] += 1
-                        
-                        logger.info(f"✅ Cielo API success with {auth_method}!")
-                        logger.debug(f"Response keys: {list(data.keys()) if isinstance(data, dict) else 'Non-dict response'}")
-                        
-                        return {
-                            'success': True,
-                            'data': data,
-                            'auth_method_used': auth_method
-                        }
+                        # SUCCESS - Extract complete response data
+                        try:
+                            response_data = response.json()
+                            self.api_stats['cielo']['success'] += 1
+                            
+                            logger.info(f"✅ Cielo Trading Stats API success with {auth_method}!")
+                            logger.info(f"Response contains keys: {list(response_data.keys()) if isinstance(response_data, dict) else 'Non-dict response'}")
+                            
+                            # FIXED: Return complete response structure for proper extraction
+                            return {
+                                'success': True,
+                                'data': response_data,  # Complete Cielo Trading Stats response
+                                'source': 'cielo_trading_stats',
+                                'auth_method_used': auth_method,
+                                'api_endpoint': 'trading-stats',
+                                'wallet_address': wallet_address,
+                                'response_timestamp': int(time.time())
+                            }
+                            
+                        except ValueError as json_error:
+                            logger.error(f"Failed to parse JSON response: {json_error}")
+                            logger.debug(f"Raw response: {response.text[:500]}")
+                            continue
                     
                     elif response.status_code == 403:
                         logger.debug(f"403 Forbidden with {auth_method} - trying next method")
@@ -165,16 +156,24 @@ class ZeusAPIManager:
                     
                     elif response.status_code == 404:
                         # 404 means wallet not found, but auth worked
-                        logger.warning(f"⚠️ Wallet {wallet_address[:8]}... not found in Cielo database")
+                        logger.warning(f"⚠️ Wallet {wallet_address[:8]}... not found in Cielo Trading Stats database")
                         self.api_stats['cielo']['errors'] += 1
                         return {
                             'success': False,
-                            'error': f'Wallet not found in Cielo Finance database',
-                            'auth_method_used': auth_method
+                            'error': f'Wallet not found in Cielo Trading Stats database',
+                            'error_code': 404,
+                            'auth_method_used': auth_method,
+                            'source': 'cielo_trading_stats'
                         }
                     
+                    elif response.status_code == 429:
+                        # Rate limited
+                        logger.warning(f"⚠️ Cielo API rate limited - waiting before retry")
+                        time.sleep(2)
+                        continue
+                    
                     else:
-                        logger.debug(f"HTTP {response.status_code} with {auth_method} - trying next method")
+                        logger.debug(f"HTTP {response.status_code} with {auth_method}: {response.text[:200]}")
                         continue
                 
                 except requests.exceptions.RequestException as e:
@@ -182,27 +181,33 @@ class ZeusAPIManager:
                     continue
             
             # If we get here, all auth methods failed
-            error_msg = f"All authentication methods failed. API key may be invalid or endpoint changed."
+            error_msg = f"All authentication methods failed for Cielo Trading Stats API. API key may be invalid."
             logger.error(f"❌ {error_msg}")
             self.api_stats['cielo']['errors'] += 1
             
             return {
                 'success': False,
                 'error': error_msg,
-                'attempted_auth_methods': len(auth_methods)
+                'attempted_auth_methods': len(auth_methods),
+                'source': 'cielo_trading_stats',
+                'api_endpoint': 'trading-stats'
             }
             
         except Exception as e:
-            error_msg = f"Cielo Finance API error: {str(e)}"
+            error_msg = f"Cielo Trading Stats API error: {str(e)}"
             logger.error(f"❌ {error_msg}")
             self.api_stats['cielo']['errors'] += 1
             return {
                 'success': False,
-                'error': error_msg
+                'error': error_msg,
+                'source': 'cielo_trading_stats'
             }
     
     def get_wallet_pnl_tokens(self, wallet_address: str) -> Dict[str, Any]:
-        """Get wallet token PnL from Cielo Finance API."""
+        """
+        Get wallet token PnL from Cielo Finance Token PnL API.
+        Based on: https://feed-api.cielo.finance/api/v1/{wallet}/pnl/tokens
+        """
         try:
             if not self.cielo_api_key:
                 return {
@@ -213,9 +218,13 @@ class ZeusAPIManager:
             self.api_stats['cielo']['calls'] += 1
             
             url = f"{self.cielo_base_url}/{wallet_address}/pnl/tokens"
-            headers = self._get_cielo_headers()
+            headers = {
+                'accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-API-KEY': self.cielo_api_key
+            }
             
-            logger.info(f"Making Cielo PnL API call: {url}")
+            logger.info(f"Making Cielo Token PnL API call: {url}")
             
             response = self.session.get(url, headers=headers, timeout=30)
             
@@ -232,7 +241,7 @@ class ZeusAPIManager:
                 }
             
             else:
-                error_msg = f"Cielo PnL API error: HTTP {response.status_code}"
+                error_msg = f"Cielo Token PnL API error: HTTP {response.status_code}"
                 if response.text:
                     error_msg += f" - {response.text[:200]}"
                 
@@ -244,7 +253,65 @@ class ZeusAPIManager:
                 }
             
         except Exception as e:
-            error_msg = f"Cielo PnL API error: {str(e)}"
+            error_msg = f"Cielo Token PnL API error: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            self.api_stats['cielo']['errors'] += 1
+            return {
+                'success': False,
+                'error': error_msg
+            }
+    
+    def get_wallet_aggregated_pnl(self, wallet_address: str) -> Dict[str, Any]:
+        """
+        Get wallet aggregated PnL from Cielo Finance Aggregated Token PnL API.
+        Based on: https://feed-api.cielo.finance/api/v1/{wallet}/pnl/total-stats
+        """
+        try:
+            if not self.cielo_api_key:
+                return {
+                    'success': False,
+                    'error': 'Cielo Finance API key not configured'
+                }
+            
+            self.api_stats['cielo']['calls'] += 1
+            
+            url = f"{self.cielo_base_url}/{wallet_address}/pnl/total-stats"
+            headers = {
+                'accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-API-KEY': self.cielo_api_key
+            }
+            
+            logger.info(f"Making Cielo Aggregated PnL API call: {url}")
+            
+            response = self.session.get(url, headers=headers, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                self.api_stats['cielo']['success'] += 1
+                
+                logger.info(f"✅ Cielo aggregated PnL success for {wallet_address[:8]}...")
+                
+                return {
+                    'success': True,
+                    'data': data,
+                    'source': 'cielo_aggregated_pnl'
+                }
+            
+            else:
+                error_msg = f"Cielo Aggregated PnL API error: HTTP {response.status_code}"
+                if response.text:
+                    error_msg += f" - {response.text[:200]}"
+                
+                logger.error(f"❌ {error_msg}")
+                self.api_stats['cielo']['errors'] += 1
+                return {
+                    'success': False,
+                    'error': error_msg
+                }
+            
+        except Exception as e:
+            error_msg = f"Cielo Aggregated PnL API error: {str(e)}"
             logger.error(f"❌ {error_msg}")
             self.api_stats['cielo']['errors'] += 1
             return {
@@ -406,6 +473,53 @@ class ZeusAPIManager:
             }
         
         return perf_stats
+    
+    def test_cielo_api_connection(self, test_wallet: str = "DhDiCRqc4BAojxUDzBonf7KAujejtpUryxDsuqPqGKA9") -> Dict[str, Any]:
+        """
+        Test Cielo API connection with a known wallet address.
+        Used for debugging and API key validation.
+        """
+        try:
+            logger.info(f"🧪 Testing Cielo API connection with wallet: {test_wallet[:8]}...")
+            
+            result = self.get_wallet_trading_stats(test_wallet)
+            
+            if result.get('success'):
+                logger.info("✅ Cielo API connection test successful!")
+                
+                # Log the structure for debugging
+                data = result.get('data', {})
+                if isinstance(data, dict):
+                    logger.info(f"Response contains {len(data)} fields: {list(data.keys())}")
+                    
+                    # Log sample values (first few fields)
+                    sample_fields = list(data.keys())[:5]
+                    for field in sample_fields:
+                        value = data.get(field)
+                        value_str = str(value)[:100] if value is not None else "None"
+                        logger.info(f"  {field}: {type(value).__name__} = {value_str}")
+                
+                return {
+                    'connection_test': 'success',
+                    'api_working': True,
+                    'response_fields': list(data.keys()) if isinstance(data, dict) else [],
+                    'auth_method': result.get('auth_method_used', 'unknown')
+                }
+            else:
+                logger.error(f"❌ Cielo API connection test failed: {result.get('error', 'Unknown error')}")
+                return {
+                    'connection_test': 'failed',
+                    'api_working': False,
+                    'error': result.get('error', 'Unknown error')
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Cielo API connection test error: {str(e)}")
+            return {
+                'connection_test': 'error',
+                'api_working': False,
+                'error': str(e)
+            }
     
     def __str__(self) -> str:
         """String representation of API manager."""
