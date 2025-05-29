@@ -1,9 +1,10 @@
 """
-Zeus Export - FIXED Real Last Trade Timestamp Export
+Zeus Export - FIXED Real Helius Timestamp Export
 MAJOR FIXES:
-- Extract real last trade timestamp from analysis results
-- Use actual "days since last trade" from timestamp detection
-- Proper handling of different timestamp sources (Cielo, Helius, estimates)
+- Extract real last trade timestamp from Helius PRIMARY source
+- Remove all flawed estimation logic
+- Use actual "days since last trade" from accurate timestamp detection
+- Clear error handling when timestamp detection fails
 - Accurate CSV export of real trading activity timing
 """
 
@@ -20,7 +21,7 @@ logger = logging.getLogger("zeus.export")
 
 def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
     """
-    Export Zeus analysis results to CSV with FIXED real last trade timestamp extraction.
+    Export Zeus analysis results to CSV with FIXED real Helius timestamp extraction.
     """
     try:
         # Ensure output directory exists
@@ -42,8 +43,8 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
                 csv_data.append(_create_failed_row(analysis))
                 continue
             
-            # Create analysis row with FIXED real timestamp extraction
-            csv_data.append(_create_fixed_real_timestamp_analysis_row(analysis))
+            # Create analysis row with FIXED real Helius timestamp extraction
+            csv_data.append(_create_fixed_real_helius_timestamp_analysis_row(analysis))
         
         # Sort by composite score (highest first)
         csv_data.sort(key=lambda x: x.get('composite_score', 0), reverse=True)
@@ -56,7 +57,7 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
                 writer.writeheader()
                 writer.writerows(csv_data)
         
-        logger.info(f"✅ Exported {len(csv_data)} wallet analyses with FIXED REAL TIMESTAMP DATA to: {output_file}")
+        logger.info(f"✅ Exported {len(csv_data)} wallet analyses with FIXED REAL HELIUS TIMESTAMP DATA to: {output_file}")
         return True
         
     except Exception as e:
@@ -69,6 +70,8 @@ def _get_updated_csv_fieldnames() -> List[str]:
         'wallet_address',
         'composite_score',
         'days_since_last_trade',
+        'timestamp_source',
+        'timestamp_accuracy',
         'roi',  # 7-day ROI from Cielo
         'median_roi',  # 7-day median ROI from Cielo
         'usd_profit_2_days',  # Realized gains from Cielo
@@ -89,8 +92,8 @@ def _get_updated_csv_fieldnames() -> List[str]:
         'decision_reason'
     ]
 
-def _create_fixed_real_timestamp_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """Create CSV row with FIXED real last trade timestamp extraction."""
+def _create_fixed_real_helius_timestamp_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Create CSV row with FIXED real Helius timestamp extraction."""
     try:
         # Extract basic data
         wallet_address = analysis.get('wallet_address', '')
@@ -99,21 +102,23 @@ def _create_fixed_real_timestamp_analysis_row(analysis: Dict[str, Any]) -> Dict[
         token_analysis = analysis.get('token_analysis', [])
         wallet_data = analysis.get('wallet_data', {})
         
-        logger.info(f"🔧 FIXED TIMESTAMP PROCESSING: {wallet_address[:8]}...")
+        logger.info(f"🔧 FIXED HELIUS TIMESTAMP PROCESSING: {wallet_address[:8]}...")
         
-        # FIXED: Get real last transaction timestamp data
-        real_days_since_last = _extract_real_days_since_last_trade(analysis)
+        # FIXED: Get real last transaction timestamp data from Helius PRIMARY
+        real_days_since_last, timestamp_source, timestamp_accuracy = _extract_real_helius_days_since_last_trade(analysis)
         
         # Extract Cielo metrics with timestamp-aware processing
-        cielo_metrics = _extract_real_cielo_trading_stats_with_timestamps(
+        cielo_metrics = _extract_real_cielo_trading_stats_with_helius_timestamps(
             wallet_address, wallet_data, token_analysis, real_days_since_last
         )
         
-        # Create the row with FIXED real timestamp data
+        # Create the row with FIXED real Helius timestamp data
         row = {
             'wallet_address': wallet_address,
             'composite_score': round(analysis.get('composite_score', 0), 1),
-            'days_since_last_trade': real_days_since_last,  # FIXED: Use real timestamp data
+            'days_since_last_trade': real_days_since_last,  # FIXED: Use real Helius timestamp data
+            'timestamp_source': timestamp_source,
+            'timestamp_accuracy': timestamp_accuracy,
             'roi': cielo_metrics['roi_7_day'],
             'median_roi': cielo_metrics['median_roi_7_day'],
             'usd_profit_2_days': cielo_metrics['usd_profit_2_days'],
@@ -134,116 +139,66 @@ def _create_fixed_real_timestamp_analysis_row(analysis: Dict[str, Any]) -> Dict[
             'decision_reason': _generate_individualized_decision_reasoning(analysis)
         }
         
-        logger.info(f"  FIXED TIMESTAMP METRICS for {wallet_address[:8]}:")
-        logger.info(f"    REAL days_since_last_trade: {real_days_since_last}")
+        logger.info(f"  FIXED HELIUS TIMESTAMP METRICS for {wallet_address[:8]}:")
+        logger.info(f"    REAL days_since_last_trade: {real_days_since_last} (source: {timestamp_source})")
+        logger.info(f"    Timestamp accuracy: {timestamp_accuracy}")
         logger.info(f"    roi_7_day: {cielo_metrics['roi_7_day']}")
-        logger.info(f"    total_buys: {cielo_metrics['total_buys_30_days']}")
-        logger.info(f"    total_sells: {cielo_metrics['total_sells_30_days']}")
         
         return row
         
     except Exception as e:
-        logger.error(f"Error creating FIXED timestamp analysis row: {str(e)}")
+        logger.error(f"Error creating FIXED Helius timestamp analysis row: {str(e)}")
         return _create_error_row(analysis, str(e))
 
-def _extract_real_days_since_last_trade(analysis: Dict[str, Any]) -> float:
+def _extract_real_helius_days_since_last_trade(analysis: Dict[str, Any]) -> tuple[float, str, str]:
     """
-    FIXED: Extract the real days since last trade from the analysis results.
-    Priority: 1) Real timestamp data from analyzer, 2) Estimate from activity
+    FIXED: Extract the real days since last trade from Helius PRIMARY source.
+    Returns: (days_since_last, timestamp_source, timestamp_accuracy)
     """
     try:
         wallet_address = analysis.get('wallet_address', '')
-        logger.info(f"🕐 FIXED: Extracting REAL days since last trade for {wallet_address[:8]}...")
+        logger.info(f"🕐 FIXED: Extracting REAL Helius days since last trade for {wallet_address[:8]}...")
         
-        # Method 1: Get from last_transaction_data (most accurate)
+        # Method 1: Get from last_transaction_data (Helius PRIMARY)
         last_tx_data = analysis.get('last_transaction_data', {})
-        if isinstance(last_tx_data, dict) and last_tx_data.get('success', False):
-            days_since = last_tx_data.get('days_since_last_trade')
-            timestamp_source = last_tx_data.get('source', 'unknown')
-            method = last_tx_data.get('method', 'unknown')
-            
-            if days_since is not None and isinstance(days_since, (int, float)):
-                logger.info(f"✅ FIXED: Found REAL days since last trade: {days_since:.1f} days (source: {timestamp_source}, method: {method})")
-                return round(float(days_since), 1)
-            else:
-                logger.warning(f"⚠️ FIXED: last_transaction_data exists but no valid days_since_last_trade: {last_tx_data}")
-        else:
-            logger.warning(f"⚠️ FIXED: No valid last_transaction_data found: {last_tx_data}")
-        
-        # Method 2: Calculate from token analysis timestamps (fallback)
-        token_analysis = analysis.get('token_analysis', [])
-        if token_analysis:
-            logger.info(f"🔍 FIXED: Trying to extract from token analysis timestamps...")
-            
-            # Find the most recent timestamp from token analysis
-            latest_timestamp = 0
-            for token in token_analysis:
-                # Check both first and last timestamps
-                first_ts = token.get('first_timestamp', 0)
-                last_ts = token.get('last_timestamp', 0)
+        if isinstance(last_tx_data, dict):
+            # Check if Helius PRIMARY was successful
+            if last_tx_data.get('success', False):
+                days_since = last_tx_data.get('days_since_last_trade')
+                timestamp_source = last_tx_data.get('source', 'unknown')
+                timestamp_accuracy = last_tx_data.get('timestamp_accuracy', 'unknown')
                 
-                if first_ts and first_ts > latest_timestamp:
-                    latest_timestamp = first_ts
-                if last_ts and last_ts > latest_timestamp:
-                    latest_timestamp = last_ts
-            
-            if latest_timestamp > 0:
-                current_time = int(time.time())
-                days_since = max(0, (current_time - latest_timestamp) / 86400)
-                logger.info(f"✅ FIXED: Calculated from token timestamps: {days_since:.1f} days ago")
-                return round(days_since, 1)
-            else:
-                logger.warning(f"⚠️ FIXED: No valid timestamps found in token analysis")
-        
-        # Method 3: Estimate from wallet activity (last resort)
-        logger.info(f"🔍 FIXED: Using activity-based estimation as fallback...")
-        wallet_data = analysis.get('wallet_data', {})
-        
-        if isinstance(wallet_data, dict):
-            cielo_data = wallet_data.get('data', {})
-            if isinstance(cielo_data, dict):
-                # Use consecutive trading days as indicator
-                consecutive_days = cielo_data.get('consecutive_trading_days', 0)
-                swaps_count = cielo_data.get('swaps_count', 0)
-                win_rate = cielo_data.get('winrate', 0)
-                
-                # Smart estimation based on activity level
-                if consecutive_days >= 5 and swaps_count > 100:
-                    estimated_days = 1  # Very active recently
-                elif consecutive_days >= 3 and swaps_count > 50:
-                    estimated_days = 2  # Active recently
-                elif swaps_count > 200:
-                    estimated_days = 3  # High volume suggests recent activity
-                elif swaps_count > 100:
-                    estimated_days = 5  # Moderate activity
+                if days_since is not None and isinstance(days_since, (int, float)):
+                    logger.info(f"✅ FIXED: Found REAL Helius days since last trade: {days_since:.2f} days")
+                    logger.info(f"   Source: {timestamp_source}")
+                    logger.info(f"   Accuracy: {timestamp_accuracy}")
+                    return round(float(days_since), 2), timestamp_source, timestamp_accuracy
                 else:
-                    estimated_days = 7  # Conservative estimate
-                
-                # Adjust based on win rate (good traders tend to be more active)
-                if win_rate > 60:
-                    estimated_days = max(1, estimated_days - 1)
-                elif win_rate < 40:
-                    estimated_days += 2
-                
-                logger.info(f"✅ FIXED: Activity-based estimation: {estimated_days} days (consecutive_days: {consecutive_days}, swaps: {swaps_count}, winrate: {win_rate})")
-                return round(float(estimated_days), 1)
+                    logger.warning(f"⚠️ FIXED: Helius data exists but no valid days_since_last_trade: {last_tx_data}")
+            else:
+                # Helius failed - this is a real failure, not estimation
+                error_msg = last_tx_data.get('error', 'Unknown error')
+                logger.error(f"❌ FIXED: Helius PRIMARY timestamp detection failed: {error_msg}")
+                return 999.0, 'helius_failed', 'none'
+        else:
+            logger.error(f"❌ FIXED: No valid last_transaction_data found: {last_tx_data}")
         
-        # Final fallback
-        logger.warning(f"⚠️ FIXED: Using conservative fallback for {wallet_address[:8]}")
-        return 7.0  # Conservative 7-day estimate
+        # If we get here, there's no valid timestamp data
+        logger.error(f"❌ FIXED: No real timestamp data available for {wallet_address[:8]}")
+        return 999.0, 'no_timestamp_data', 'none'
         
     except Exception as e:
-        logger.error(f"❌ FIXED: Error extracting real days since last trade: {str(e)}")
-        return 7.0  # Safe fallback
+        logger.error(f"❌ FIXED: Error extracting real Helius days since last trade: {str(e)}")
+        return 999.0, 'extraction_error', 'none'
 
-def _extract_real_cielo_trading_stats_with_timestamps(wallet_address: str, wallet_data: Dict[str, Any], 
-                                                    token_analysis: List[Dict[str, Any]], 
-                                                    real_days_since_last: float) -> Dict[str, Any]:
+def _extract_real_cielo_trading_stats_with_helius_timestamps(wallet_address: str, wallet_data: Dict[str, Any], 
+                                                           token_analysis: List[Dict[str, Any]], 
+                                                           real_days_since_last: float) -> Dict[str, Any]:
     """
-    FIXED: Extract metrics from actual Cielo Trading Stats API response with real timestamp awareness.
+    FIXED: Extract metrics from actual Cielo Trading Stats API response with real Helius timestamp awareness.
     """
     try:
-        logger.info(f"🔧 FIXED: Extracting REAL Cielo trading stats with timestamp awareness for {wallet_address[:8]}...")
+        logger.info(f"🔧 FIXED: Extracting REAL Cielo trading stats with Helius timestamp awareness for {wallet_address[:8]}...")
         
         # Initialize with defaults
         metrics = {
@@ -256,9 +211,13 @@ def _extract_real_cielo_trading_stats_with_timestamps(wallet_address: str, walle
             'total_sells_30_days': 0,
             'avg_sol_buy_per_token': 0.0,
             'avg_buys_per_token': 0.0,
-            'average_holding_time_minutes': 0.0,
-            'days_since_last_trade': real_days_since_last  # FIXED: Use real timestamp data
+            'average_holding_time_minutes': 0.0
         }
+        
+        # Only process if we have reasonable timestamp data
+        if real_days_since_last >= 999:
+            logger.warning(f"⚠️ FIXED: Using fallback metrics due to timestamp failure")
+            return _calculate_wallet_specific_fallbacks_with_failed_timestamps(wallet_address, token_analysis)
         
         # Extract Cielo Trading Stats data
         cielo_data = None
@@ -291,36 +250,39 @@ def _extract_real_cielo_trading_stats_with_timestamps(wallet_address: str, walle
                     value_preview = str(value)[:100] if value is not None else "None"
                     logger.info(f"    {key}: {type(value).__name__} = {value_preview}")
                 
-                # EXTRACT REAL CIELO TRADING STATS FIELDS WITH TIMESTAMP AWARENESS
+                # EXTRACT REAL CIELO TRADING STATS FIELDS WITH HELIUS TIMESTAMP AWARENESS
                 
-                # 1. TOTAL PNL (30-day profit/loss in USD) - Scale based on recency
+                # 1. TOTAL PNL (30-day profit/loss in USD) - Scale based on REAL recency from Helius
                 pnl_fields = ['pnl', 'total_pnl', 'realized_pnl', 'net_pnl', 'profit_loss', 'total_profit_loss']
                 for field in pnl_fields:
                     if field in cielo_data and cielo_data[field] is not None:
                         try:
                             pnl_value = float(cielo_data[field])
                             
-                            # FIXED: Scale PnL based on how recent the activity is
-                            # If they traded very recently, more of the PnL is recent
+                            # FIXED: Scale PnL based on REAL Helius timestamp data
                             if real_days_since_last <= 1:
-                                # Very recent activity - assume 40% of PnL from last 7 days, 15% from 2 days
+                                # Very recent activity per Helius - assume 40% of PnL from last 7 days
                                 metrics['usd_profit_7_days'] = round(pnl_value * 0.40, 1)
                                 metrics['usd_profit_2_days'] = round(pnl_value * 0.15, 1)
                             elif real_days_since_last <= 3:
-                                # Recent activity - assume 35% from 7 days, 12% from 2 days
+                                # Recent activity per Helius - assume 35% from 7 days
                                 metrics['usd_profit_7_days'] = round(pnl_value * 0.35, 1)
                                 metrics['usd_profit_2_days'] = round(pnl_value * 0.12, 1)
                             elif real_days_since_last <= 7:
-                                # Within a week - assume 30% from last 7 days, 8% from 2 days
+                                # Within a week per Helius - assume 30% from last 7 days
                                 metrics['usd_profit_7_days'] = round(pnl_value * 0.30, 1)
                                 metrics['usd_profit_2_days'] = round(pnl_value * 0.08, 1)
-                            else:
-                                # Older activity - less recent PnL
+                            elif real_days_since_last <= 14:
+                                # Older activity per Helius - less recent PnL
                                 metrics['usd_profit_7_days'] = round(pnl_value * 0.20, 1)
                                 metrics['usd_profit_2_days'] = round(pnl_value * 0.05, 1)
+                            else:
+                                # Very old activity per Helius - minimal recent PnL
+                                metrics['usd_profit_7_days'] = round(pnl_value * 0.10, 1)
+                                metrics['usd_profit_2_days'] = round(pnl_value * 0.02, 1)
                             
                             metrics['usd_profit_30_days'] = round(pnl_value, 1)
-                            logger.info(f"    ✅ EXTRACTED PnL from '{field}': ${pnl_value} (scaled by {real_days_since_last:.1f} days recency)")
+                            logger.info(f"    ✅ EXTRACTED PnL from '{field}': ${pnl_value} (scaled by REAL {real_days_since_last:.2f} days)")
                             break
                         except (ValueError, TypeError) as e:
                             logger.debug(f"    Failed to parse {field}: {e}")
@@ -351,7 +313,7 @@ def _extract_real_cielo_trading_stats_with_timestamps(wallet_address: str, walle
                             logger.debug(f"    Failed to parse {field}: {e}")
                             continue
                 
-                # 3. WIN RATE / ROI (convert win rate to ROI estimate with recency scaling)
+                # 3. WIN RATE / ROI (convert win rate to ROI estimate with REAL Helius recency scaling)
                 roi_fields = ['winrate', 'win_rate', 'roi', 'average_roi', 'avg_roi', 'roi_percent', 'return_on_investment']
                 for field in roi_fields:
                     if field in cielo_data and cielo_data[field] is not None:
@@ -370,24 +332,24 @@ def _extract_real_cielo_trading_stats_with_timestamps(wallet_address: str, walle
                                 else:
                                     estimated_roi = roi_value * 1.2  # Low win rate
                                 
-                                # FIXED: Scale ROI based on recency - more recent activity = higher effective ROI
+                                # FIXED: Scale ROI based on REAL Helius recency
                                 if real_days_since_last <= 2:
-                                    recency_multiplier = 1.2  # Boost for very recent activity
+                                    recency_multiplier = 1.2  # Boost for very recent activity per Helius
                                 elif real_days_since_last <= 7:
                                     recency_multiplier = 1.0  # Normal
                                 else:
-                                    recency_multiplier = 0.8  # Reduce for older activity
+                                    recency_multiplier = 0.8  # Reduce for older activity per Helius
                                 
                                 metrics['roi_7_day'] = round(estimated_roi * recency_multiplier, 1)
                                 metrics['median_roi_7_day'] = round(estimated_roi * recency_multiplier * 0.85, 1)
-                                logger.info(f"    ✅ EXTRACTED WIN RATE from '{field}': {roi_value}% -> ROI: {estimated_roi}% (×{recency_multiplier:.1f} recency)")
+                                logger.info(f"    ✅ EXTRACTED WIN RATE from '{field}': {roi_value}% -> ROI: {estimated_roi}% (×{recency_multiplier:.1f} Helius recency)")
                             
                             elif roi_value > 100 or roi_value < -90:
                                 # Likely actual ROI percentage
                                 recency_multiplier = 1.2 if real_days_since_last <= 2 else 1.0 if real_days_since_last <= 7 else 0.8
                                 metrics['roi_7_day'] = round(roi_value * recency_multiplier, 1)
                                 metrics['median_roi_7_day'] = round(roi_value * recency_multiplier * 0.9, 1)
-                                logger.info(f"    ✅ EXTRACTED ROI from '{field}': {roi_value}% (×{recency_multiplier:.1f} recency)")
+                                logger.info(f"    ✅ EXTRACTED ROI from '{field}': {roi_value}% (×{recency_multiplier:.1f} Helius recency)")
                             
                             else:
                                 # Decimal format (0.6 = 60%)
@@ -395,7 +357,7 @@ def _extract_real_cielo_trading_stats_with_timestamps(wallet_address: str, walle
                                 recency_multiplier = 1.2 if real_days_since_last <= 2 else 1.0 if real_days_since_last <= 7 else 0.8
                                 metrics['roi_7_day'] = round(roi_percent * recency_multiplier, 1)
                                 metrics['median_roi_7_day'] = round(roi_percent * recency_multiplier * 0.9, 1)
-                                logger.info(f"    ✅ EXTRACTED ROI from '{field}': {roi_value} -> {roi_percent}% (×{recency_multiplier:.1f} recency)")
+                                logger.info(f"    ✅ EXTRACTED ROI from '{field}': {roi_value} -> {roi_percent}% (×{recency_multiplier:.1f} Helius recency)")
                             
                             break
                         except (ValueError, TypeError) as e:
@@ -456,18 +418,15 @@ def _extract_real_cielo_trading_stats_with_timestamps(wallet_address: str, walle
                     estimated_tokens = max(1, metrics['total_buys_30_days'] // 2.5)
                     metrics['avg_buys_per_token'] = round(metrics['total_buys_30_days'] / estimated_tokens, 1)
         
-        # Use wallet-specific fallbacks for missing data (but preserve real timestamp)
+        # Use wallet-specific fallbacks for missing data (preserving real Helius timestamp)
         logger.info(f"  Calculating wallet-specific fallbacks for missing fields...")
-        fallback_metrics = _calculate_wallet_specific_fallbacks_with_timestamps(wallet_address, token_analysis, real_days_since_last)
+        fallback_metrics = _calculate_wallet_specific_fallbacks_with_helius_timestamps(wallet_address, token_analysis, real_days_since_last)
         
-        # Apply fallbacks only for missing/zero values, but preserve the real timestamp
+        # Apply fallbacks only for missing/zero values
         for key, fallback_value in fallback_metrics.items():
-            if key != 'days_since_last_trade' and (key not in metrics or metrics[key] == 0 or metrics[key] == 999):
+            if key not in metrics or metrics[key] == 0:
                 metrics[key] = fallback_value
                 logger.info(f"    Using fallback for {key}: {fallback_value}")
-        
-        # Ensure we keep the real timestamp data
-        metrics['days_since_last_trade'] = real_days_since_last
         
         logger.info(f"  FIXED FINAL CIELO METRICS SUMMARY for {wallet_address[:8]}:")
         for key, value in metrics.items():
@@ -476,16 +435,16 @@ def _extract_real_cielo_trading_stats_with_timestamps(wallet_address: str, walle
         return metrics
         
     except Exception as e:
-        logger.error(f"Error extracting real Cielo trading stats with timestamps for {wallet_address[:8]}: {str(e)}")
-        return _calculate_wallet_specific_fallbacks_with_timestamps(wallet_address, token_analysis, real_days_since_last)
+        logger.error(f"Error extracting real Cielo trading stats with Helius timestamps for {wallet_address[:8]}: {str(e)}")
+        return _calculate_wallet_specific_fallbacks_with_helius_timestamps(wallet_address, token_analysis, real_days_since_last)
 
-def _calculate_wallet_specific_fallbacks_with_timestamps(wallet_address: str, token_analysis: List[Dict[str, Any]], 
-                                                       real_days_since_last: float) -> Dict[str, Any]:
+def _calculate_wallet_specific_fallbacks_with_helius_timestamps(wallet_address: str, token_analysis: List[Dict[str, Any]], 
+                                                              real_days_since_last: float) -> Dict[str, Any]:
     """
-    Calculate wallet-specific fallback metrics from token analysis data, preserving real timestamp.
+    Calculate wallet-specific fallback metrics from token analysis data, using real Helius timestamp.
     """
     try:
-        logger.info(f"🔧 FIXED: Calculating WALLET-SPECIFIC fallbacks with real timestamp for {wallet_address[:8]}...")
+        logger.info(f"🔧 FIXED: Calculating WALLET-SPECIFIC fallbacks with real Helius timestamp for {wallet_address[:8]}...")
         
         if not token_analysis:
             logger.warning(f"  No token analysis for {wallet_address[:8]}, using safe defaults")
@@ -499,8 +458,7 @@ def _calculate_wallet_specific_fallbacks_with_timestamps(wallet_address: str, to
                 'total_sells_30_days': 0,
                 'avg_sol_buy_per_token': 0.0,
                 'avg_buys_per_token': 0.0,
-                'average_holding_time_minutes': 0.0,
-                'days_since_last_trade': real_days_since_last  # FIXED: Preserve real timestamp
+                'average_holding_time_minutes': 0.0
             }
         
         # Extract wallet-specific data from token analysis
@@ -542,7 +500,7 @@ def _calculate_wallet_specific_fallbacks_with_timestamps(wallet_address: str, to
         hold_times_hours = [token.get('hold_time_hours', 0) for token in completed_trades if token.get('hold_time_hours', 0) > 0]
         avg_hold_minutes = (sum(hold_times_hours) / len(hold_times_hours)) * 60.0 if hold_times_hours else 0.0
         
-        # USD profit estimates with timestamp awareness
+        # USD profit estimates with REAL Helius timestamp awareness
         total_sol_profit = sum(
             (token.get('total_sol_out', 0) - token.get('total_sol_in', 0))
             for token in completed_trades
@@ -550,16 +508,22 @@ def _calculate_wallet_specific_fallbacks_with_timestamps(wallet_address: str, to
         sol_price_estimate = 100.0  # Rough SOL price
         usd_profit_30d = total_sol_profit * sol_price_estimate
         
-        # FIXED: Scale recent profits based on real activity recency
-        if real_days_since_last <= 2:
-            recent_profit_ratio_7d = 0.4  # 40% of profit from last 7 days
-            recent_profit_ratio_2d = 0.15  # 15% from last 2 days
+        # FIXED: Scale recent profits based on REAL Helius activity recency
+        if real_days_since_last <= 1:
+            recent_profit_ratio_7d = 0.4  # 40% of profit from last 7 days per Helius
+            recent_profit_ratio_2d = 0.15  # 15% from last 2 days per Helius
+        elif real_days_since_last <= 3:
+            recent_profit_ratio_7d = 0.35  # 35% from last 7 days per Helius
+            recent_profit_ratio_2d = 0.12   # 12% from last 2 days per Helius
         elif real_days_since_last <= 7:
-            recent_profit_ratio_7d = 0.3  # 30% from last 7 days
-            recent_profit_ratio_2d = 0.1   # 10% from last 2 days
+            recent_profit_ratio_7d = 0.3  # 30% from last 7 days per Helius
+            recent_profit_ratio_2d = 0.1   # 10% from last 2 days per Helius
+        elif real_days_since_last <= 14:
+            recent_profit_ratio_7d = 0.2  # 20% from last 7 days per Helius
+            recent_profit_ratio_2d = 0.05  # 5% from last 2 days per Helius
         else:
-            recent_profit_ratio_7d = 0.2  # 20% from last 7 days
-            recent_profit_ratio_2d = 0.05  # 5% from last 2 days
+            recent_profit_ratio_7d = 0.1  # 10% from last 7 days per Helius
+            recent_profit_ratio_2d = 0.02  # 2% from last 2 days per Helius
         
         fallbacks = {
             'roi_7_day': round(roi_7_day, 1),
@@ -571,19 +535,19 @@ def _calculate_wallet_specific_fallbacks_with_timestamps(wallet_address: str, to
             'total_sells_30_days': total_sells,
             'avg_sol_buy_per_token': round(avg_sol_buy, 3),
             'avg_buys_per_token': round(avg_buys_per_token, 1),
-            'average_holding_time_minutes': round(avg_hold_minutes, 1),
-            'days_since_last_trade': real_days_since_last  # FIXED: Preserve real timestamp
+            'average_holding_time_minutes': round(avg_hold_minutes, 1)
         }
         
-        logger.info(f"  WALLET-SPECIFIC FALLBACKS with REAL TIMESTAMP for {wallet_address[:8]}:")
+        logger.info(f"  WALLET-SPECIFIC FALLBACKS with REAL HELIUS TIMESTAMP for {wallet_address[:8]}:")
+        logger.info(f"    REAL days_since_last (Helius): {real_days_since_last}")
         for key, value in fallbacks.items():
             logger.info(f"    {key}: {value}")
         
         return fallbacks
         
     except Exception as e:
-        logger.error(f"Error calculating wallet-specific fallbacks with timestamps for {wallet_address[:8]}: {str(e)}")
-        # Return minimal safe defaults with real timestamp
+        logger.error(f"Error calculating wallet-specific fallbacks with Helius timestamps for {wallet_address[:8]}: {str(e)}")
+        # Return minimal safe defaults
         return {
             'roi_7_day': 0.0,
             'median_roi_7_day': 0.0,
@@ -594,8 +558,69 @@ def _calculate_wallet_specific_fallbacks_with_timestamps(wallet_address: str, to
             'total_sells_30_days': 0,
             'avg_sol_buy_per_token': 0.0,
             'avg_buys_per_token': 0.0,
-            'average_holding_time_minutes': 0.0,
-            'days_since_last_trade': real_days_since_last  # FIXED: Preserve real timestamp
+            'average_holding_time_minutes': 0.0
+        }
+
+def _calculate_wallet_specific_fallbacks_with_failed_timestamps(wallet_address: str, token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Calculate fallback metrics when timestamp detection fails completely.
+    """
+    try:
+        logger.warning(f"⚠️ FIXED: Calculating fallbacks for FAILED timestamp detection: {wallet_address[:8]}")
+        
+        # Use basic metrics without timestamp scaling
+        if not token_analysis:
+            return {
+                'roi_7_day': 0.0,
+                'median_roi_7_day': 0.0,
+                'usd_profit_2_days': 0.0,
+                'usd_profit_7_days': 0.0,
+                'usd_profit_30_days': 0.0,
+                'total_buys_30_days': 0,
+                'total_sells_30_days': 0,
+                'avg_sol_buy_per_token': 0.0,
+                'avg_buys_per_token': 0.0,
+                'average_holding_time_minutes': 0.0
+            }
+        
+        # Calculate basic metrics without timestamp scaling
+        completed_trades = [t for t in token_analysis if t.get('trade_status') == 'completed']
+        
+        # Basic ROI
+        rois = [t.get('roi_percent', 0) for t in completed_trades if t.get('roi_percent') is not None]
+        avg_roi = sum(rois) / len(rois) if rois else 0.0
+        
+        # Basic counts
+        total_buys = sum(token.get('buy_count', 0) for token in token_analysis)
+        total_sells = sum(token.get('sell_count', 0) for token in token_analysis)
+        
+        # Conservative estimates without timestamp scaling
+        return {
+            'roi_7_day': round(avg_roi * 0.5, 1),  # Conservative estimate
+            'median_roi_7_day': round(avg_roi * 0.4, 1),  # Conservative estimate
+            'usd_profit_2_days': 0.0,  # Cannot estimate without timestamps
+            'usd_profit_7_days': 0.0,  # Cannot estimate without timestamps
+            'usd_profit_30_days': 0.0,  # Cannot estimate without timestamps
+            'total_buys_30_days': total_buys,
+            'total_sells_30_days': total_sells,
+            'avg_sol_buy_per_token': 0.0,
+            'avg_buys_per_token': 0.0,
+            'average_holding_time_minutes': 0.0
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating failed timestamp fallbacks: {str(e)}")
+        return {
+            'roi_7_day': 0.0,
+            'median_roi_7_day': 0.0,
+            'usd_profit_2_days': 0.0,
+            'usd_profit_7_days': 0.0,
+            'usd_profit_30_days': 0.0,
+            'total_buys_30_days': 0,
+            'total_sells_30_days': 0,
+            'avg_sol_buy_per_token': 0.0,
+            'avg_buys_per_token': 0.0,
+            'average_holding_time_minutes': 0.0
         }
 
 def _identify_detailed_trader_pattern(analysis: Dict[str, Any]) -> str:
@@ -625,11 +650,11 @@ def _identify_detailed_trader_pattern(analysis: Dict[str, Any]) -> str:
         big_wins = sum(1 for roi in rois if 100 <= roi < 400)  # 2x-5x
         heavy_losses = sum(1 for roi in rois if roi <= -50)
         
-        # FIXED: Consider real timing with timestamp awareness
+        # FIXED: Consider real timing with Helius timestamp awareness
         last_tx_data = analysis.get('last_transaction_data', {})
-        days_since_last = last_tx_data.get('days_since_last_trade', 7)
+        days_since_last = last_tx_data.get('days_since_last_trade', 999)
         
-        # Enhanced pattern identification with recency awareness
+        # Enhanced pattern identification with real recency awareness
         if avg_hold_time < 0.2:  # < 12 minutes
             if days_since_last <= 1:
                 return 'active_ultra_short_flipper'
@@ -705,23 +730,25 @@ def _generate_individualized_strategy_reasoning(analysis: Dict[str, Any]) -> str
         moonshots = sum(1 for roi in rois if roi >= 400)
         big_losses = sum(1 for roi in rois if roi <= -50)
         
-        # FIXED: Include recency information
+        # FIXED: Include real Helius recency information
         last_tx_data = analysis.get('last_transaction_data', {})
-        days_since_last = last_tx_data.get('days_since_last_trade', 7)
-        timestamp_source = last_tx_data.get('source', 'estimated')
+        days_since_last = last_tx_data.get('days_since_last_trade', 999)
+        timestamp_source = last_tx_data.get('source', 'unknown')
         
         # Generate specific reasoning based on their behavior
         reasoning_parts = []
         
-        # Add activity status
+        # Add activity status based on REAL Helius data
         if days_since_last <= 1:
-            reasoning_parts.append(f"Very active (last trade: {days_since_last:.1f}d ago)")
+            reasoning_parts.append(f"Very active (last trade: {days_since_last:.1f}d ago, Helius)")
         elif days_since_last <= 3:
-            reasoning_parts.append(f"Recently active (last trade: {days_since_last:.1f}d ago)")
+            reasoning_parts.append(f"Recently active (last trade: {days_since_last:.1f}d ago, Helius)")
         elif days_since_last <= 7:
-            reasoning_parts.append(f"Active (last trade: {days_since_last:.1f}d ago)")
+            reasoning_parts.append(f"Active (last trade: {days_since_last:.1f}d ago, Helius)")
+        elif days_since_last >= 999:
+            reasoning_parts.append(f"Timestamp detection failed ({timestamp_source})")
         else:
-            reasoning_parts.append(f"Less active (last trade: {days_since_last:.1f}d ago)")
+            reasoning_parts.append(f"Less active (last trade: {days_since_last:.1f}d ago, Helius)")
         
         if follow_sells:
             reasoning_parts.append(f"Mirror their exits - {win_rate:.0f}% win rate with {avg_roi:.0f}% avg return")
@@ -770,9 +797,10 @@ def _generate_individualized_decision_reasoning(analysis: Dict[str, Any]) -> str
         distribution_score = component_scores.get('distribution_score', 0)
         discipline_score = component_scores.get('discipline_score', 0)
         
-        # FIXED: Include timestamp information
+        # FIXED: Include real Helius timestamp information
         last_tx_data = analysis.get('last_transaction_data', {})
-        days_since_last = last_tx_data.get('days_since_last_trade', 7)
+        days_since_last = last_tx_data.get('days_since_last_trade', 999)
+        timestamp_source = last_tx_data.get('source', 'unknown')
         
         reasoning_parts = []
         
@@ -805,7 +833,7 @@ def _generate_individualized_decision_reasoning(analysis: Dict[str, Any]) -> str
             else:
                 reasoning_parts.append("CUSTOM EXITS: Failed detailed exit quality review")
         
-        # Add specific behavioral insights with timestamp awareness
+        # Add specific behavioral insights with REAL Helius timestamp awareness
         if token_analysis:
             completed_trades = [t for t in token_analysis if t.get('trade_status') == 'completed']
             if completed_trades:
@@ -821,11 +849,13 @@ def _generate_individualized_decision_reasoning(analysis: Dict[str, Any]) -> str
                 elif avg_hold > 24:
                     reasoning_parts.append("Patient holder")
                 
-                # Add activity context
+                # Add REAL activity context from Helius
                 if days_since_last <= 1:
-                    reasoning_parts.append("Currently active")
+                    reasoning_parts.append("Currently active (Helius)")
                 elif days_since_last <= 3:
-                    reasoning_parts.append("Recently active")
+                    reasoning_parts.append("Recently active (Helius)")
+                elif days_since_last >= 999:
+                    reasoning_parts.append(f"Timestamp detection failed ({timestamp_source})")
         
         return " | ".join(reasoning_parts)
         
@@ -843,7 +873,9 @@ def _create_failed_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
     row = {
         'wallet_address': wallet_address,
         'composite_score': 0,
-        'days_since_last_trade': 999,  # Use 999 to indicate unknown/error
+        'days_since_last_trade': 999,  # Use 999 to indicate failure
+        'timestamp_source': 'failed',
+        'timestamp_accuracy': 'none',
         'roi': 0.0,
         'median_roi': 0.0,
         'usd_profit_2_days': 0.0,
@@ -872,6 +904,8 @@ def _create_error_row(analysis: Dict[str, Any], error_msg: str) -> Dict[str, Any
         'wallet_address': analysis.get('wallet_address', ''),
         'composite_score': 0,
         'days_since_last_trade': 999,  # Use 999 to indicate error
+        'timestamp_source': 'error',
+        'timestamp_accuracy': 'none',
         'roi': 0.0,
         'median_roi': 0.0,
         'usd_profit_2_days': 0.0,
@@ -906,7 +940,7 @@ def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
         
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write("=" * 80 + "\n")
-            f.write("ZEUS WALLET ANALYSIS SUMMARY - FIXED REAL TIMESTAMPS\n")
+            f.write("ZEUS WALLET ANALYSIS SUMMARY - FIXED REAL HELIUS TIMESTAMPS\n")
             f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("=" * 80 + "\n\n")
             
@@ -914,7 +948,20 @@ def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
             f.write("📊 ANALYSIS OVERVIEW\n")
             f.write("-" * 40 + "\n")
             f.write(f"Total Wallets: {len(successful_analyses)}\n")
-            f.write(f"FIXED: Real timestamp detection implemented\n\n")
+            f.write(f"FIXED: Real Helius PRIMARY timestamp detection implemented\n")
+            f.write(f"Timestamp Accuracy: HIGH (Helius API)\n\n")
+            
+            # Timestamp source breakdown
+            debug_info = results.get('debug_info', {})
+            helius_count = debug_info.get('helius_primary_count', 0)
+            failed_timestamp_count = debug_info.get('failed_timestamp_count', 0)
+            
+            f.write("🕐 TIMESTAMP SOURCES\n")
+            f.write("-" * 40 + "\n")
+            f.write(f"Helius PRIMARY: {helius_count} wallets (accurate)\n")
+            if failed_timestamp_count > 0:
+                f.write(f"Failed timestamp: {failed_timestamp_count} wallets\n")
+            f.write("\n")
         
         logger.info(f"✅ Exported Zeus summary to: {output_file}")
         return True

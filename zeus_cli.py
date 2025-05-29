@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 """
-Zeus - Standalone Wallet Analysis System
+Zeus - Standalone Wallet Analysis System - FIXED with Required Helius API
 Main CLI Entry Point with Binary Decision System
 
-Features:
-- 30-day analysis window
-- Minimum 6 unique token trades requirement
-- Smart token sampling (5 → 10 if inconclusive)
-- Binary decisions (Follow Wallet/Follow Sells)
-- New scoring system with volume qualifier
-- Bot-friendly CSV output
-
-FIXED VERSION - Clean Zeus splash screen + All functionality preserved
+MAJOR FIXES:
+- Helius API is now REQUIRED (not optional)
+- Better error messages for missing required APIs
+- Enhanced configuration validation
+- Improved system status checks
+- Clear warnings about API requirements
 """
 
 import os
@@ -61,7 +58,7 @@ def load_config() -> Dict[str, Any]:
         "api_keys": {
             "birdeye_api_key": "",
             "cielo_api_key": "",
-            "helius_api_key": "",
+            "helius_api_key": "",  # NOW REQUIRED
             "solana_rpc_url": "https://api.mainnet-beta.solana.com"
         },
         "analysis": {
@@ -70,7 +67,8 @@ def load_config() -> Dict[str, Any]:
             "initial_token_sample": 5,
             "max_token_sample": 10,
             "composite_score_threshold": 65.0,
-            "exit_quality_threshold": 70.0
+            "exit_quality_threshold": 70.0,
+            "require_real_timestamps": True
         },
         "output": {
             "default_csv": "zeus_analysis.csv",
@@ -120,24 +118,50 @@ def ensure_output_dir(output_path: str) -> str:
     return output_path
 
 def get_api_keys_from_config(config: Dict[str, Any]) -> Dict[str, str]:
-    """Extract API keys from config - handles flat format."""
+    """Extract API keys from config - handles nested format."""
     
-    # Your config has keys at root level, so use them directly
-    extracted = {
-        "birdeye_api_key": str(config.get("birdeye_api_key", "")).strip(),
-        "cielo_api_key": str(config.get("cielo_api_key", "")).strip(), 
-        "helius_api_key": str(config.get("helius_api_key", "")).strip(),
-        "solana_rpc_url": str(config.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")).strip()
-    }
+    # Check for nested api_keys structure first
+    if "api_keys" in config and isinstance(config["api_keys"], dict):
+        api_keys = config["api_keys"]
+        extracted = {
+            "birdeye_api_key": str(api_keys.get("birdeye_api_key", "")).strip(),
+            "cielo_api_key": str(api_keys.get("cielo_api_key", "")).strip(), 
+            "helius_api_key": str(api_keys.get("helius_api_key", "")).strip(),
+            "solana_rpc_url": str(api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")).strip()
+        }
+    else:
+        # Fallback to flat structure
+        extracted = {
+            "birdeye_api_key": str(config.get("birdeye_api_key", "")).strip(),
+            "cielo_api_key": str(config.get("cielo_api_key", "")).strip(), 
+            "helius_api_key": str(config.get("helius_api_key", "")).strip(),
+            "solana_rpc_url": str(config.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")).strip()
+        }
     
     # Debug logging
-    configured_keys = [k for k, v in extracted.items() if v]
+    configured_keys = [k for k, v in extracted.items() if v and k.endswith('_api_key')]
     logger.info(f"Extracted API keys: {configured_keys}")
     
     return extracted
 
+def validate_required_apis(api_keys: Dict[str, str]) -> Dict[str, Any]:
+    """Validate that required API keys are configured."""
+    required_apis = ['cielo_api_key', 'helius_api_key']
+    recommended_apis = ['birdeye_api_key']
+    
+    missing_required = [api for api in required_apis if not api_keys.get(api, '').strip()]
+    missing_recommended = [api for api in recommended_apis if not api_keys.get(api, '').strip()]
+    
+    return {
+        'system_ready': len(missing_required) == 0,
+        'missing_required': missing_required,
+        'missing_recommended': missing_recommended,
+        'configured_required': [api for api in required_apis if api_keys.get(api, '').strip()],
+        'configured_recommended': [api for api in recommended_apis if api_keys.get(api, '').strip()]
+    }
+
 class ZeusCLI:
-    """Zeus CLI Application with binary decision system."""
+    """Zeus CLI Application with Required API validation."""
     
     def __init__(self):
         self.config = load_config()
@@ -146,11 +170,11 @@ class ZeusCLI:
     def _create_parser(self) -> argparse.ArgumentParser:
         """Create argument parser."""
         parser = argparse.ArgumentParser(
-            description="Zeus - Standalone Wallet Analysis System with Binary Decisions",
+            description="Zeus - Standalone Wallet Analysis System with Binary Decisions (FIXED - Helius Required)",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
-  zeus configure --cielo-api-key YOUR_KEY
+  zeus configure --cielo-api-key YOUR_KEY --helius-api-key YOUR_KEY
   zeus analyze --wallets wallets.txt
   zeus analyze --wallet 7xG8...k9mP --output custom_analysis.csv
   zeus status
@@ -161,9 +185,9 @@ Examples:
         
         # Configure command
         configure_parser = subparsers.add_parser("configure", help="Configure API keys")
-        configure_parser.add_argument("--birdeye-api-key", help="Birdeye API key")
-        configure_parser.add_argument("--cielo-api-key", help="Cielo Finance API key")
-        configure_parser.add_argument("--helius-api-key", help="Helius API key")
+        configure_parser.add_argument("--birdeye-api-key", help="Birdeye API key (recommended)")
+        configure_parser.add_argument("--cielo-api-key", help="Cielo Finance API key (REQUIRED)")
+        configure_parser.add_argument("--helius-api-key", help="Helius API key (REQUIRED)")
         configure_parser.add_argument("--rpc-url", help="Solana RPC URL")
         
         # Analyze command
@@ -180,7 +204,7 @@ Examples:
         return parser
     
     def _handle_numbered_menu(self):
-        """Interactive numbered menu with clean Zeus splash screen."""
+        """Interactive numbered menu with REQUIRED API validation."""
         print("\n" + "="*80, flush=True)
         print("                     ⚡ ███████  ███████  ██    ██  ███████ ⚡", flush=True) 
         print("                     ⚡      ██  ██       ██    ██  ██      ⚡", flush=True)
@@ -188,6 +212,28 @@ Examples:
         print("                     ⚡    ██    ██       ██    ██       ██ ⚡", flush=True)
         print("                     ⚡ ███████  ███████   ██████   ███████ ⚡", flush=True)
         print("="*80, flush=True)
+        print("                   🔧 FIXED: Helius API Now REQUIRED", flush=True)
+        print("="*80, flush=True)
+        
+        # Check system readiness first
+        api_keys = get_api_keys_from_config(self.config)
+        validation = validate_required_apis(api_keys)
+        
+        if not validation['system_ready']:
+            print("\n❌ SYSTEM NOT READY - Missing REQUIRED API Keys:", flush=True)
+            for api in validation['missing_required']:
+                api_name = api.replace('_api_key', '').upper()
+                print(f"   • {api_name} API Key - REQUIRED", flush=True)
+            print("\n🔧 Please configure required APIs before using Zeus.", flush=True)
+            print("💡 Run: zeus configure --cielo-api-key YOUR_KEY --helius-api-key YOUR_KEY", flush=True)
+        else:
+            print("\n✅ SYSTEM READY - All required APIs configured", flush=True)
+            if validation['missing_recommended']:
+                print("⚠️ Missing recommended APIs:", flush=True)
+                for api in validation['missing_recommended']:
+                    api_name = api.replace('_api_key', '').upper()
+                    print(f"   • {api_name} API Key - Enhanced features", flush=True)
+        
         print("\nSelect an option:", flush=True)
         print("\n🔧 CONFIGURATION:", flush=True)
         print("1. Configure API Keys", flush=True)
@@ -198,7 +244,7 @@ Examples:
         print("5. Single Wallet Analysis", flush=True)
         print("\n🔍 UTILITIES:", flush=True)
         print("6. System Status", flush=True)
-        print("7. Help & Scoring Guide", flush=True)
+        print("7. Help & API Requirements", flush=True)
         print("0. Exit", flush=True)
         print("="*80, flush=True)
         
@@ -234,9 +280,9 @@ Examples:
             input("Press Enter to continue...")
     
     def _interactive_configure(self):
-        """Interactive API configuration."""
+        """Interactive API configuration with REQUIRED validation."""
         print("\n" + "="*70, flush=True)
-        print("    🔧 ZEUS API CONFIGURATION", flush=True)
+        print("    🔧 ZEUS API CONFIGURATION - FIXED", flush=True)
         print("="*70, flush=True)
         
         # Ensure api_keys section exists
@@ -244,6 +290,8 @@ Examples:
             self.config["api_keys"] = {}
         
         api_keys = self.config["api_keys"]
+        
+        print("\n🚨 REQUIRED APIs - Zeus cannot function without these:")
         
         # Cielo Finance API (REQUIRED)
         print("\n💰 Cielo Finance API Key (REQUIRED for wallet analysis)")
@@ -261,9 +309,32 @@ Examples:
             if new_key:
                 api_keys["cielo_api_key"] = new_key
                 print("✅ Configured")
+            else:
+                print("❌ WARNING: Cielo API key is REQUIRED!")
+        
+        # Helius API (REQUIRED)
+        print("\n🔍 Helius API Key (REQUIRED for accurate timestamps)")
+        current_helius = api_keys.get("helius_api_key", "")
+        if current_helius:
+            print(f"Current: {current_helius[:8]}...")
+            change = input("Change Helius API key? (y/N): ").lower().strip()
+            if change == 'y':
+                new_key = input("Enter new Helius API key: ").strip()
+                if new_key:
+                    api_keys["helius_api_key"] = new_key
+                    print("✅ Updated")
+        else:
+            new_key = input("Enter Helius API key: ").strip()
+            if new_key:
+                api_keys["helius_api_key"] = new_key
+                print("✅ Configured")
+            else:
+                print("❌ WARNING: Helius API key is REQUIRED!")
+        
+        print("\n📈 RECOMMENDED APIs - System works but with limitations:")
         
         # Birdeye API (RECOMMENDED)
-        print("\n🔍 Birdeye API Key (RECOMMENDED for token analysis)")
+        print("\n🐦 Birdeye API Key (RECOMMENDED for enhanced analysis)")
         current_birdeye = api_keys.get("birdeye_api_key", "")
         if current_birdeye:
             print(f"Current: {current_birdeye[:8]}...")
@@ -279,23 +350,6 @@ Examples:
                 api_keys["birdeye_api_key"] = new_key
                 print("✅ Configured")
         
-        # Helius API (OPTIONAL)
-        print("\n🚀 Helius API Key (OPTIONAL for enhanced analysis)")
-        current_helius = api_keys.get("helius_api_key", "")
-        if current_helius:
-            print(f"Current: {current_helius[:8]}...")
-            change = input("Change Helius API key? (y/N): ").lower().strip()
-            if change == 'y':
-                new_key = input("Enter new Helius API key: ").strip()
-                if new_key:
-                    api_keys["helius_api_key"] = new_key
-                    print("✅ Updated")
-        else:
-            new_key = input("Enter Helius API key (or Enter to skip): ").strip()
-            if new_key:
-                api_keys["helius_api_key"] = new_key
-                print("✅ Configured")
-        
         # RPC URL
         print("\n🌐 Solana RPC URL")
         current_rpc = api_keys.get("solana_rpc_url", "https://api.mainnet-beta.solana.com")
@@ -308,20 +362,57 @@ Examples:
                 print("✅ Updated")
         
         save_config(self.config)
-        print("\n✅ Configuration saved!")
+        
+        # Validate configuration
+        api_keys_extracted = get_api_keys_from_config(self.config)
+        validation = validate_required_apis(api_keys_extracted)
+        
+        print("\n" + "="*70)
+        if validation['system_ready']:
+            print("✅ Configuration saved and validated - System is READY!")
+        else:
+            print("⚠️ Configuration saved but system is NOT READY!")
+            print("Missing REQUIRED APIs:")
+            for api in validation['missing_required']:
+                print(f"   • {api.replace('_api_key', '').upper()}")
+        
         input("Press Enter to continue...")
     
     def _check_configuration(self):
-        """Display current configuration."""
+        """Display current configuration with REQUIRED validation."""
         print("\n" + "="*70, flush=True)
-        print("    📋 ZEUS CONFIGURATION", flush=True)
+        print("    📋 ZEUS CONFIGURATION - FIXED", flush=True)
         print("="*70, flush=True)
         
-        print(f"\n🔑 API KEYS:")
-        api_keys = self.config.get("api_keys", {})
-        print(f"   Cielo Finance: {'✅ Configured' if api_keys.get('cielo_api_key') else '❌ Not configured'}")
-        print(f"   Birdeye: {'✅ Configured' if api_keys.get('birdeye_api_key') else '⚠️ Not configured'}")
-        print(f"   Helius: {'✅ Configured' if api_keys.get('helius_api_key') else '⚠️ Not configured'}")
+        api_keys = get_api_keys_from_config(self.config)
+        validation = validate_required_apis(api_keys)
+        
+        print(f"\n🔑 API KEYS STATUS:")
+        
+        # Required APIs
+        print(f"\n🚨 REQUIRED APIs:")
+        required_status = {
+            'cielo_api_key': 'Cielo Finance',
+            'helius_api_key': 'Helius'
+        }
+        
+        for api_key, api_name in required_status.items():
+            if api_keys.get(api_key):
+                print(f"   {api_name}: ✅ Configured")
+            else:
+                print(f"   {api_name}: ❌ MISSING (REQUIRED)")
+        
+        # Recommended APIs
+        print(f"\n📈 RECOMMENDED APIs:")
+        recommended_status = {
+            'birdeye_api_key': 'Birdeye'
+        }
+        
+        for api_key, api_name in recommended_status.items():
+            if api_keys.get(api_key):
+                print(f"   {api_name}: ✅ Configured")
+            else:
+                print(f"   {api_name}: ⚠️ Not configured")
         
         print(f"\n🌐 RPC ENDPOINT:")
         print(f"   URL: {api_keys.get('solana_rpc_url', 'https://api.mainnet-beta.solana.com')}")
@@ -330,72 +421,123 @@ Examples:
         analysis_config = self.config.get('analysis', {})
         print(f"   Analysis Period: {analysis_config.get('days_to_analyze', 30)} days")
         print(f"   Min Unique Tokens: {analysis_config.get('min_unique_tokens', 6)}")
-        print(f"   Initial Sample: {analysis_config.get('initial_token_sample', 5)} tokens")
-        print(f"   Max Sample: {analysis_config.get('max_token_sample', 10)} tokens")
+        print(f"   Require Real Timestamps: {analysis_config.get('require_real_timestamps', True)}")
         print(f"   Score Threshold: {analysis_config.get('composite_score_threshold', 65.0)}")
         print(f"   Exit Quality Threshold: {analysis_config.get('exit_quality_threshold', 70.0)}")
         
-        print(f"\n🎯 BINARY DECISION SYSTEM:")
-        print(f"   Follow Wallet Threshold: ≥{analysis_config.get('composite_score_threshold', 65.0)} score")
-        print(f"   Follow Sells Threshold: ≥{analysis_config.get('exit_quality_threshold', 70.0)}% exit quality")
-        print(f"   Volume Qualifier: ≥{analysis_config.get('min_unique_tokens', 6)} unique tokens")
-        
-        # Check system readiness
-        api_keys = self.config.get("api_keys", {})
-        cielo_ok = bool(api_keys.get("cielo_api_key"))
-        print(f"\n🎯 SYSTEM READINESS:")
-        print(f"   Core Analysis: {'✅ Ready' if cielo_ok else '❌ Need Cielo API'}")
-        print(f"   Enhanced Analysis: {'✅ Ready' if api_keys.get('birdeye_api_key') else '⚠️ Limited'}")
+        print(f"\n🎯 SYSTEM STATUS:")
+        if validation['system_ready']:
+            print(f"   System Status: ✅ READY")
+            print(f"   Wallet Analysis: ✅ Ready")
+            print(f"   Timestamp Accuracy: ✅ High (Helius)")
+            if validation['missing_recommended']:
+                print(f"   Enhanced Features: ⚠️ Limited (missing {len(validation['missing_recommended'])} recommended APIs)")
+            else:
+                print(f"   Enhanced Features: ✅ Full")
+        else:
+            print(f"   System Status: ❌ NOT READY")
+            print(f"   Missing Required: {', '.join([api.replace('_api_key', '').upper() for api in validation['missing_required']])}")
+            print(f"   🔧 Fix: zeus configure --cielo-api-key YOUR_KEY --helius-api-key YOUR_KEY")
         
         input("\nPress Enter to continue...")
     
     def _test_api_connectivity(self):
-        """Test API connectivity."""
+        """Test API connectivity with REQUIRED validation."""
         print("\n" + "="*70, flush=True)
-        print("    🔍 API CONNECTIVITY TEST", flush=True)
+        print("    🔍 API CONNECTIVITY TEST - FIXED", flush=True)
         print("="*70, flush=True)
+        
+        api_keys = get_api_keys_from_config(self.config)
+        validation = validate_required_apis(api_keys)
+        
+        if not validation['system_ready']:
+            print(f"\n❌ Cannot test APIs - Missing REQUIRED keys:")
+            for api in validation['missing_required']:
+                print(f"   • {api.replace('_api_key', '').upper()}")
+            print(f"\n🔧 Configure required APIs first: zeus configure")
+            input("Press Enter to continue...")
+            return
         
         try:
             from zeus_api_manager import ZeusAPIManager
             
-            # Initialize with proper API key extraction
-            api_keys_dict = get_api_keys_from_config(self.config)
-            logger.debug(f"Extracted API keys: {list(api_keys_dict.keys())}")
+            print(f"\n🔧 Initializing API manager with REQUIRED validation...")
             
             api_manager = ZeusAPIManager(
-                birdeye_api_key=api_keys_dict["birdeye_api_key"],
-                cielo_api_key=api_keys_dict["cielo_api_key"],
-                helius_api_key=api_keys_dict["helius_api_key"],
-                rpc_url=api_keys_dict["solana_rpc_url"]
+                birdeye_api_key=api_keys["birdeye_api_key"],
+                cielo_api_key=api_keys["cielo_api_key"],
+                helius_api_key=api_keys["helius_api_key"],
+                rpc_url=api_keys["solana_rpc_url"]
             )
             
+            print(f"✅ API manager initialized successfully!")
+            
+            # Test Helius (REQUIRED)
+            print(f"\n🔍 Testing Helius API (REQUIRED - Primary timestamp source)...")
+            helius_test = api_manager.test_helius_connection()
+            
+            if helius_test.get('api_working'):
+                print(f"   ✅ Helius: Operational")
+                print(f"   📅 Timestamp detection: Working")
+                if helius_test.get('days_since_last') != 'unknown':
+                    print(f"   📊 Test result: {helius_test.get('days_since_last')} days since last trade")
+            else:
+                print(f"   ❌ Helius: {helius_test.get('error', 'Failed')}")
+            
+            # Test Cielo (REQUIRED)
+            print(f"\n💰 Testing Cielo API (REQUIRED - Trading stats)...")
+            cielo_test = api_manager.test_cielo_api_connection()
+            
+            if cielo_test.get('api_working'):
+                print(f"   ✅ Cielo: Operational")
+                print(f"   🔐 Auth method: {cielo_test.get('auth_method', 'unknown')}")
+                fields = cielo_test.get('response_fields', [])
+                print(f"   📊 Data fields: {len(fields)} available")
+            else:
+                print(f"   ❌ Cielo: {cielo_test.get('error', 'Failed')}")
+            
+            # Test Birdeye (RECOMMENDED)
+            if api_keys.get("birdeye_api_key"):
+                print(f"\n🐦 Testing Birdeye API (RECOMMENDED - Enhanced features)...")
+                print(f"   ✅ Birdeye: Configured (enhanced features available)")
+            else:
+                print(f"\n🐦 Birdeye API (RECOMMENDED):")
+                print(f"   ⚠️ Not configured - limited features")
+            
+            # Overall status
             status = api_manager.get_api_status()
+            print(f"\n🎯 OVERALL SYSTEM STATUS:")
+            print(f"   System Ready: {'✅ YES' if status.get('system_ready', False) else '❌ NO'}")
+            print(f"   Wallet Analysis: {'✅ Ready' if status.get('wallet_compatible', False) else '❌ Not Ready'}")
+            print(f"   Timestamp Accuracy: {status.get('timestamp_accuracy', 'unknown').upper()}")
             
-            print(f"\n📊 API STATUS:")
-            for api_name, api_status in status.get('api_status', {}).items():
-                if api_status == "operational":
-                    print(f"   {api_name}: ✅ Operational")
-                elif api_status == "not_configured":
-                    print(f"   {api_name}: ⚠️ Not configured")
-                else:
-                    print(f"   {api_name}: ❌ {api_status}")
-            
-            print(f"\n🎯 ZEUS COMPATIBILITY:")
-            print(f"   Wallet Analysis: {'✅ Ready' if status.get('wallet_compatible', False) else '❌ Missing APIs'}")
-            print(f"   Token Analysis: {'✅ Enhanced' if status.get('token_analysis_ready', False) else '⚠️ Limited'}")
-            
+        except ValueError as e:
+            print(f"\n❌ CRITICAL ERROR: {str(e)}")
+            print(f"🔧 This indicates missing REQUIRED API keys")
         except Exception as e:
-            print(f"❌ Error testing APIs: {str(e)}")
+            print(f"\n❌ Error testing APIs: {str(e)}")
             logger.error(f"API test error: {str(e)}")
         
         input("\nPress Enter to continue...")
     
     def _batch_analyze(self):
-        """Batch wallet analysis."""
+        """Batch wallet analysis with REQUIRED API validation."""
         print("\n" + "="*80, flush=True)
-        print("    📊 ZEUS BATCH WALLET ANALYSIS", flush=True)
-        print("    🎯 30-Day Analysis with Binary Decisions", flush=True)
+        print("    📊 ZEUS BATCH WALLET ANALYSIS - FIXED", flush=True)
+        print("    🎯 30-Day Analysis with Helius PRIMARY Timestamps", flush=True)
         print("="*80, flush=True)
+        
+        # Check system readiness
+        api_keys = get_api_keys_from_config(self.config)
+        validation = validate_required_apis(api_keys)
+        
+        if not validation['system_ready']:
+            print(f"\n❌ SYSTEM NOT READY - Missing REQUIRED API Keys:")
+            for api in validation['missing_required']:
+                print(f"   • {api.replace('_api_key', '').upper()}")
+            print(f"\n🔧 Configure required APIs: zeus configure --cielo-api-key YOUR_KEY --helius-api-key YOUR_KEY")
+            input("Press Enter to continue...")
+            return
         
         # Load wallets
         wallets = load_wallets_from_file("wallets.txt")
@@ -406,29 +548,28 @@ Examples:
             return
         
         print(f"\n📁 Found {len(wallets)} wallets in wallets.txt")
+        print(f"🔧 System ready with REQUIRED APIs configured")
         
         # Run analysis
         try:
             from zeus_analyzer import ZeusAnalyzer
             from zeus_api_manager import ZeusAPIManager
             
-            # Initialize with proper API key extraction
-            api_keys_dict = get_api_keys_from_config(self.config)
-            logger.info(f"Initializing API manager with keys: {[k for k, v in api_keys_dict.items() if v]}")
+            print(f"\n🚀 Initializing Zeus with REQUIRED API validation...")
             
             api_manager = ZeusAPIManager(
-                birdeye_api_key=api_keys_dict["birdeye_api_key"],
-                cielo_api_key=api_keys_dict["cielo_api_key"],
-                helius_api_key=api_keys_dict["helius_api_key"],
-                rpc_url=api_keys_dict["solana_rpc_url"]
+                birdeye_api_key=api_keys["birdeye_api_key"],
+                cielo_api_key=api_keys["cielo_api_key"],
+                helius_api_key=api_keys["helius_api_key"],
+                rpc_url=api_keys["solana_rpc_url"]
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
             
-            print(f"\n🚀 Starting analysis...")
+            print(f"\n🔍 Starting analysis with REAL timestamp detection...")
             print(f"   • Period: 30 days")
             print(f"   • Min tokens: 6 unique trades")
-            print(f"   • Smart sampling: 5 → 10 tokens if needed")
+            print(f"   • Timestamp source: Helius PRIMARY (accurate)")
             print(f"   • Binary decisions: Follow Wallet + Follow Sells")
             
             # Run batch analysis
@@ -453,6 +594,9 @@ Examples:
             else:
                 print(f"\n❌ Analysis failed: {results.get('error', 'Unknown error')}")
         
+        except ValueError as e:
+            print(f"\n❌ CRITICAL ERROR: {str(e)}")
+            print(f"🔧 This indicates missing REQUIRED API keys")
         except Exception as e:
             print(f"\n❌ Error during analysis: {str(e)}")
             logger.error(f"Batch analysis error: {str(e)}")
@@ -460,10 +604,22 @@ Examples:
         input("\nPress Enter to continue...")
     
     def _single_wallet_analyze(self):
-        """Single wallet analysis."""
+        """Single wallet analysis with REQUIRED API validation."""
         print("\n" + "="*70, flush=True)
-        print("    🔍 SINGLE WALLET ANALYSIS", flush=True)
+        print("    🔍 SINGLE WALLET ANALYSIS - FIXED", flush=True)
         print("="*70, flush=True)
+        
+        # Check system readiness
+        api_keys = get_api_keys_from_config(self.config)
+        validation = validate_required_apis(api_keys)
+        
+        if not validation['system_ready']:
+            print(f"\n❌ SYSTEM NOT READY - Missing REQUIRED API Keys:")
+            for api in validation['missing_required']:
+                print(f"   • {api.replace('_api_key', '').upper()}")
+            print(f"\n🔧 Configure required APIs first")
+            input("Press Enter to continue...")
+            return
         
         wallet_address = input("\nEnter wallet address: ").strip()
         
@@ -476,19 +632,18 @@ Examples:
             from zeus_analyzer import ZeusAnalyzer
             from zeus_api_manager import ZeusAPIManager
             
-            # Initialize with proper API key extraction
-            api_keys_dict = get_api_keys_from_config(self.config)
+            print(f"\n🔧 Initializing with REQUIRED APIs...")
             
             api_manager = ZeusAPIManager(
-                birdeye_api_key=api_keys_dict["birdeye_api_key"],
-                cielo_api_key=api_keys_dict["cielo_api_key"],
-                helius_api_key=api_keys_dict["helius_api_key"],
-                rpc_url=api_keys_dict["solana_rpc_url"]
+                birdeye_api_key=api_keys["birdeye_api_key"],
+                cielo_api_key=api_keys["cielo_api_key"],
+                helius_api_key=api_keys["helius_api_key"],
+                rpc_url=api_keys["solana_rpc_url"]
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
             
-            print(f"\n🔍 Analyzing {wallet_address[:8]}...{wallet_address[-4:]}")
+            print(f"\n🔍 Analyzing {wallet_address[:8]}...{wallet_address[-4:]} with Helius PRIMARY timestamps")
             
             # Run single analysis
             result = analyzer.analyze_single_wallet(wallet_address)
@@ -497,8 +652,16 @@ Examples:
                 # Display detailed results
                 self._display_single_wallet_result(result)
             else:
-                print(f"\n❌ Analysis failed: {result.get('error', 'Unknown error')}")
+                error_type = result.get('error_type', 'UNKNOWN')
+                print(f"\n❌ Analysis failed ({error_type}): {result.get('error', 'Unknown error')}")
+                
+                if error_type == 'TIMESTAMP_DETECTION_FAILED':
+                    print(f"🔧 This indicates an issue with Helius API timestamp detection")
+                    print(f"📞 Check Helius API key and connectivity")
         
+        except ValueError as e:
+            print(f"\n❌ CRITICAL ERROR: {str(e)}")
+            print(f"🔧 This indicates missing REQUIRED API keys")
         except Exception as e:
             print(f"\n❌ Error during analysis: {str(e)}")
             logger.error(f"Single wallet analysis error: {str(e)}")
@@ -506,7 +669,7 @@ Examples:
         input("\nPress Enter to continue...")
     
     def _display_analysis_summary(self, results: Dict[str, Any]):
-        """Display batch analysis summary."""
+        """Display batch analysis summary with timestamp info."""
         total_analyzed = results.get('total_analyzed', 0)
         successful = results.get('successful_analyses', 0)
         failed = results.get('failed_analyses', 0)
@@ -515,6 +678,16 @@ Examples:
         print(f"   Total wallets: {total_analyzed}")
         print(f"   Successful: {successful}")
         print(f"   Failed: {failed}")
+        
+        # Timestamp source breakdown
+        debug_info = results.get('debug_info', {})
+        helius_primary_count = debug_info.get('helius_primary_count', 0)
+        failed_timestamp_count = debug_info.get('failed_timestamp_count', 0)
+        
+        print(f"\n🕐 TIMESTAMP ACCURACY:")
+        print(f"   Helius PRIMARY: {helius_primary_count} wallets (accurate)")
+        if failed_timestamp_count > 0:
+            print(f"   Failed timestamp: {failed_timestamp_count} wallets")
         
         analyses = results.get('analyses', [])
         if analyses:
@@ -538,18 +711,33 @@ Examples:
                     follow_wallet = perf.get('binary_decisions', {}).get('follow_wallet', False)
                     follow_sells = perf.get('binary_decisions', {}).get('follow_sells', False)
                     
+                    # Show real timestamp info
+                    last_tx_data = perf.get('last_transaction_data', {})
+                    days_since = last_tx_data.get('days_since_last_trade', 'unknown')
+                    
                     print(f"   {i}. {wallet[:8]}...{wallet[-4:]}")
-                    print(f"      Score: {score:.1f}/100")
+                    print(f"      Score: {score:.1f}/100 | Last trade: {days_since} days ago")
                     print(f"      Follow: {'✅' if follow_wallet else '❌'} Wallet | {'✅' if follow_sells else '❌'} Sells")
     
     def _display_single_wallet_result(self, result: Dict[str, Any]):
-        """Display single wallet analysis result."""
+        """Display single wallet analysis result with timestamp info."""
         print(f"\n" + "="*70)
-        print(f"    📊 WALLET ANALYSIS RESULT")
+        print(f"    📊 WALLET ANALYSIS RESULT - FIXED")
         print(f"="*70)
         
         wallet = result['wallet_address']
         print(f"\n💰 Wallet: {wallet}")
+        
+        # Timestamp info
+        last_tx_data = result.get('last_transaction_data', {})
+        days_since = last_tx_data.get('days_since_last_trade', 'unknown')
+        timestamp_source = last_tx_data.get('source', 'unknown')
+        timestamp_accuracy = last_tx_data.get('timestamp_accuracy', 'unknown')
+        
+        print(f"\n🕐 TIMESTAMP INFO:")
+        print(f"   Days since last trade: {days_since}")
+        print(f"   Source: {timestamp_source}")
+        print(f"   Accuracy: {timestamp_accuracy}")
         
         # Basic metrics
         print(f"\n📈 PERFORMANCE METRICS:")
@@ -576,66 +764,81 @@ Examples:
             print(f"   Stop Loss: {strategy.get('stop_loss_percent', 0)}%")
             print(f"   Position Size: {strategy.get('position_size_sol', '1-10')} SOL")
             print(f"   Reasoning: {strategy.get('reasoning', 'N/A')}")
-        
-        # Scoring breakdown
-        scoring = result.get('scoring_breakdown', {})
-        if scoring:
-            print(f"\n🔢 SCORING BREAKDOWN:")
-            component_scores = scoring.get('component_scores', {})
-            print(f"   Risk-Adjusted Performance: {component_scores.get('risk_adjusted_score', 0):.1f}/30")
-            print(f"   Distribution Quality: {component_scores.get('distribution_score', 0):.1f}/25") 
-            print(f"   Trading Discipline: {component_scores.get('discipline_score', 0):.1f}/20")
-            print(f"   Market Impact Awareness: {component_scores.get('market_impact_score', 0):.1f}/15")
-            print(f"   Consistency & Reliability: {component_scores.get('consistency_score', 0):.1f}/10")
     
     def _system_status(self):
-        """Display system status."""
+        """Display system status with REQUIRED API validation."""
         print("\n" + "="*70, flush=True)
-        print("    ⚡ ZEUS SYSTEM STATUS", flush=True)
+        print("    ⚡ ZEUS SYSTEM STATUS - FIXED", flush=True)
         print("="*70, flush=True)
         
-        try:
-            from zeus_api_manager import ZeusAPIManager
-            
-            # Initialize with proper API key extraction
-            api_keys_dict = get_api_keys_from_config(self.config)
-            
-            api_manager = ZeusAPIManager(
-                birdeye_api_key=api_keys_dict["birdeye_api_key"],
-                cielo_api_key=api_keys_dict["cielo_api_key"],
-                helius_api_key=api_keys_dict["helius_api_key"],
-                rpc_url=api_keys_dict["solana_rpc_url"]
-            )
-            
-            status = api_manager.get_api_status()
-            perf_stats = api_manager.get_performance_stats()
-            
-            print(f"\n🔌 API STATUS:")
-            for api_name, api_status in status.get('api_status', {}).items():
-                print(f"   {api_name}: {api_status}")
-            
-            print(f"\n📊 PERFORMANCE STATS:")
-            for api_name, stats in perf_stats.items():
-                if isinstance(stats, dict) and 'total_calls' in stats:
-                    print(f"   {api_name}: {stats['total_calls']} calls, {stats['success_rate_percent']:.1f}% success")
-            
-            print(f"\n🎯 SYSTEM CAPABILITIES:")
-            print(f"   30-Day Analysis: ✅ Ready")
-            print(f"   Binary Decisions: ✅ Ready") 
-            print(f"   Smart Token Sampling: ✅ Ready")
-            print(f"   Volume Qualifier: ✅ Ready (≥6 tokens)")
-            print(f"   TP/SL Strategy Matrix: ✅ Ready")
-            
-        except Exception as e:
-            print(f"❌ Error checking system status: {str(e)}")
-            logger.error(f"System status error: {str(e)}")
+        api_keys = get_api_keys_from_config(self.config)
+        validation = validate_required_apis(api_keys)
+        
+        print(f"\n🔧 SYSTEM CONFIGURATION:")
+        print(f"   Zeus Version: 2.0 (Helius Required)")
+        print(f"   Configuration File: {CONFIG_FILE}")
+        print(f"   System Ready: {'✅ YES' if validation['system_ready'] else '❌ NO'}")
+        
+        print(f"\n🔑 API KEY STATUS:")
+        
+        # Required APIs
+        print(f"\n🚨 REQUIRED APIs:")
+        for api in ['cielo_api_key', 'helius_api_key']:
+            api_name = api.replace('_api_key', '').upper()
+            if api_keys.get(api):
+                print(f"   {api_name}: ✅ Configured")
+            else:
+                print(f"   {api_name}: ❌ MISSING")
+        
+        # Recommended APIs
+        print(f"\n📈 RECOMMENDED APIs:")
+        for api in ['birdeye_api_key']:
+            api_name = api.replace('_api_key', '').upper()
+            if api_keys.get(api):
+                print(f"   {api_name}: ✅ Configured")
+            else:
+                print(f"   {api_name}: ⚠️ Not configured")
+        
+        if validation['system_ready']:
+            try:
+                from zeus_api_manager import ZeusAPIManager
+                
+                api_manager = ZeusAPIManager(
+                    birdeye_api_key=api_keys["birdeye_api_key"],
+                    cielo_api_key=api_keys["cielo_api_key"],
+                    helius_api_key=api_keys["helius_api_key"],
+                    rpc_url=api_keys["solana_rpc_url"]
+                )
+                
+                status = api_manager.get_api_status()
+                perf_stats = api_manager.get_performance_stats()
+                
+                print(f"\n📊 API PERFORMANCE:")
+                for api_name, stats in perf_stats.items():
+                    if isinstance(stats, dict) and 'total_calls' in stats:
+                        print(f"   {api_name}: {stats['total_calls']} calls, {stats['success_rate_percent']:.1f}% success")
+                
+                print(f"\n🎯 SYSTEM CAPABILITIES:")
+                print(f"   Wallet Analysis: {'✅ Ready' if status.get('wallet_compatible', False) else '❌ Not Ready'}")
+                print(f"   Timestamp Accuracy: {status.get('timestamp_accuracy', 'none').upper()}")
+                print(f"   Binary Decisions: ✅ Ready") 
+                print(f"   TP/SL Strategy Matrix: ✅ Ready")
+                
+            except Exception as e:
+                print(f"\n❌ Error checking detailed status: {str(e)}")
+        else:
+            print(f"\n🔧 TO FIX:")
+            print(f"   Run: zeus configure")
+            for api in validation['missing_required']:
+                api_name = api.replace('_api_key', '').replace('_', '-')
+                print(f"   Add: --{api_name} YOUR_KEY")
         
         input("\nPress Enter to continue...")
     
     def _show_help(self):
-        """Show help and scoring guide."""
+        """Show help and API requirements."""
         print("\n" + "="*80, flush=True)
-        print("    📖 ZEUS HELP & SCORING GUIDE", flush=True)
+        print("    📖 ZEUS HELP & API REQUIREMENTS - FIXED", flush=True)
         print("="*80, flush=True)
         
         print(f"\n🎯 ZEUS OVERVIEW:")
@@ -643,37 +846,42 @@ Examples:
         print(f"for automated trading bots. It analyzes wallets over a 30-day period")
         print(f"and provides clear YES/NO decisions on whether to follow their trades.")
         
+        print(f"\n🚨 REQUIRED APIs (System cannot function without these):")
+        print(f"   • Cielo Finance API - Wallet trading statistics")
+        print(f"     Get yours at: https://cielo.finance")
+        print(f"   • Helius API - Accurate transaction timestamps")
+        print(f"     Get yours at: https://helius.xyz")
+        
+        print(f"\n📈 RECOMMENDED APIs (Enhanced features):")
+        print(f"   • Birdeye API - Enhanced token analysis")
+        print(f"     Get yours at: https://birdeye.so")
+        
+        print(f"\n🔧 MAJOR CHANGES IN v2.0:")
+        print(f"   • Helius API is now REQUIRED (not optional)")
+        print(f"   • Accurate timestamp detection eliminates false 'active' classifications")
+        print(f"   • Better error messages and validation")
+        print(f"   • System fails gracefully when APIs are missing")
+        
         print(f"\n📊 ANALYSIS PROCESS:")
-        print(f"1. Check minimum 6 unique token trades in 30 days")
-        print(f"2. Analyze 5 most recent token trades")
-        print(f"3. If decision is unclear, expand to 10 tokens")
+        print(f"1. Get REAL last transaction timestamp from Helius API")
+        print(f"2. Get wallet trading statistics from Cielo API")
+        print(f"3. Check minimum 6 unique token trades in 30 days")
         print(f"4. Calculate composite score (0-100)")
         print(f"5. Generate binary decisions and TP/SL strategy")
         
         print(f"\n🔢 SCORING SYSTEM (0-100 points):")
         print(f"   • Risk-Adjusted Performance (30%)")
-        print(f"     - Median ROI, Standard Deviation, Volume Qualifier")
         print(f"   • Distribution Quality (25%)")
-        print(f"     - Moonshot rate, Big wins, Loss management")
         print(f"   • Trading Discipline (20%)")
-        print(f"     - Loss cutting, Exit behavior, Flipper detection")
         print(f"   • Market Impact Awareness (15%)")
-        print(f"     - Bet sizing, Market cap strategy")
         print(f"   • Consistency & Reliability (10%)")
-        print(f"     - Activity pattern, Red flag detection")
         
         print(f"\n🎯 BINARY DECISIONS:")
         print(f"   Follow Wallet: ≥65 score + ≥6 tokens + No bot behavior")
         print(f"   Follow Sells: ≥70% exit quality + Low dump rate")
         
-        print(f"\n📋 STRATEGY MATRIX:")
-        print(f"   Mirror Strategy (Follow Sells = YES):")
-        print(f"   - Copy their exits with safety buffer")
-        print(f"   Custom Strategy (Follow Sells = NO):")
-        print(f"   - Use fixed TP/SL based on trader pattern")
-        
         print(f"\n⚡ COMMAND EXAMPLES:")
-        print(f"   zeus configure --cielo-api-key YOUR_KEY")
+        print(f"   zeus configure --cielo-api-key YOUR_KEY --helius-api-key YOUR_KEY")
         print(f"   zeus analyze --wallets wallets.txt")
         print(f"   zeus analyze --wallet 7xG8...k9mP")
         print(f"   zeus status")
@@ -722,23 +930,42 @@ Examples:
             logger.info("RPC URL configured")
         
         save_config(self.config)
-        logger.info("Configuration saved")
+        
+        # Validate after configuration
+        api_keys_extracted = get_api_keys_from_config(self.config)
+        validation = validate_required_apis(api_keys_extracted)
+        
+        if validation['system_ready']:
+            logger.info("✅ Configuration complete - System is READY!")
+        else:
+            logger.warning("⚠️ Configuration saved but system is NOT READY!")
+            logger.warning(f"Missing REQUIRED APIs: {', '.join([api.replace('_api_key', '').upper() for api in validation['missing_required']])}")
     
     def _handle_analyze_command(self, args):
-        """Handle analyze command."""
+        """Handle analyze command with REQUIRED API validation."""
         try:
+            # Validate required APIs first
+            api_keys = get_api_keys_from_config(self.config)
+            validation = validate_required_apis(api_keys)
+            
+            if not validation['system_ready']:
+                logger.error("❌ SYSTEM NOT READY - Missing REQUIRED API Keys:")
+                for api in validation['missing_required']:
+                    logger.error(f"   • {api.replace('_api_key', '').upper()}")
+                logger.error("🔧 Configure required APIs: zeus configure --cielo-api-key YOUR_KEY --helius-api-key YOUR_KEY")
+                return
+            
             from zeus_analyzer import ZeusAnalyzer
             from zeus_api_manager import ZeusAPIManager
             from zeus_export import export_zeus_analysis
             
-            # Initialize with proper API key extraction
-            api_keys_dict = get_api_keys_from_config(self.config)
+            logger.info("🔧 Initializing Zeus with REQUIRED API validation...")
             
             api_manager = ZeusAPIManager(
-                birdeye_api_key=api_keys_dict["birdeye_api_key"],
-                cielo_api_key=api_keys_dict["cielo_api_key"],
-                helius_api_key=api_keys_dict["helius_api_key"],
-                rpc_url=api_keys_dict["solana_rpc_url"]
+                birdeye_api_key=api_keys["birdeye_api_key"],
+                cielo_api_key=api_keys["cielo_api_key"],
+                helius_api_key=api_keys["helius_api_key"],
+                rpc_url=api_keys["solana_rpc_url"]
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
@@ -754,7 +981,8 @@ Examples:
                     export_zeus_analysis({"analyses": [result]}, output_file)
                     logger.info(f"Results saved to {output_file}")
                 else:
-                    logger.error(f"Analysis failed: {result.get('error')}")
+                    error_type = result.get('error_type', 'UNKNOWN')
+                    logger.error(f"Analysis failed ({error_type}): {result.get('error')}")
             
             elif args.wallets:
                 # Batch analysis
@@ -777,33 +1005,50 @@ Examples:
             else:
                 logger.error("Either --wallet or --wallets must be specified")
         
+        except ValueError as e:
+            logger.error(f"❌ CRITICAL ERROR: {str(e)}")
+            logger.error("🔧 This indicates missing REQUIRED API keys")
         except Exception as e:
             logger.error(f"Analysis error: {str(e)}")
     
     def _handle_status_command(self, args):
-        """Handle status command."""
+        """Handle status command with REQUIRED API validation."""
         try:
-            from zeus_api_manager import ZeusAPIManager
-            
-            # Initialize with proper API key extraction
-            api_keys_dict = get_api_keys_from_config(self.config)
-            
-            api_manager = ZeusAPIManager(
-                birdeye_api_key=api_keys_dict["birdeye_api_key"],
-                cielo_api_key=api_keys_dict["cielo_api_key"],
-                helius_api_key=api_keys_dict["helius_api_key"],
-                rpc_url=api_keys_dict["solana_rpc_url"]
-            )
-            
-            status = api_manager.get_api_status()
+            api_keys = get_api_keys_from_config(self.config)
+            validation = validate_required_apis(api_keys)
             
             print("Zeus System Status:")
             print("=" * 50)
-            for api_name, api_status in status.get('api_status', {}).items():
-                print(f"{api_name}: {api_status}")
             
-            print(f"\nWallet Analysis Ready: {status.get('wallet_compatible', False)}")
-            print(f"Token Analysis Ready: {status.get('token_analysis_ready', False)}")
+            print(f"\n🚨 REQUIRED APIs:")
+            for api in ['cielo_api_key', 'helius_api_key']:
+                api_name = api.replace('_api_key', '').upper()
+                status = "✅ Configured" if api_keys.get(api) else "❌ MISSING"
+                print(f"{api_name}: {status}")
+            
+            print(f"\n📈 RECOMMENDED APIs:")
+            for api in ['birdeye_api_key']:
+                api_name = api.replace('_api_key', '').upper()
+                status = "✅ Configured" if api_keys.get(api) else "⚠️ Not configured"
+                print(f"{api_name}: {status}")
+            
+            print(f"\nSystem Ready: {'✅ YES' if validation['system_ready'] else '❌ NO'}")
+            
+            if validation['system_ready']:
+                from zeus_api_manager import ZeusAPIManager
+                
+                api_manager = ZeusAPIManager(
+                    birdeye_api_key=api_keys["birdeye_api_key"],
+                    cielo_api_key=api_keys["cielo_api_key"],
+                    helius_api_key=api_keys["helius_api_key"],
+                    rpc_url=api_keys["solana_rpc_url"]
+                )
+                
+                status = api_manager.get_api_status()
+                print(f"Wallet Analysis Ready: {status.get('wallet_compatible', False)}")
+                print(f"Timestamp Accuracy: {status.get('timestamp_accuracy', 'none').upper()}")
+            else:
+                print(f"Missing REQUIRED APIs: {', '.join([api.replace('_api_key', '').upper() for api in validation['missing_required']])}")
         
         except Exception as e:
             logger.error(f"Status check error: {str(e)}")

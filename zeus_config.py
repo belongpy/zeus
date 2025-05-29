@@ -1,13 +1,11 @@
 """
-Zeus Configuration Management
+Zeus Configuration Management - FIXED with Required Helius API
 Handles configuration loading, validation, and defaults
 
-Features:
-- JSON-based configuration
-- Environment variable support
-- Configuration validation
-- Default value management
-- Configuration migration/updates
+MAJOR CHANGES:
+- Helius API is now REQUIRED (not optional)
+- Enhanced validation for required APIs
+- Better error messages for missing required keys
 """
 
 import os
@@ -19,13 +17,13 @@ from pathlib import Path
 logger = logging.getLogger("zeus.config")
 
 class ZeusConfig:
-    """Zeus configuration manager with validation and defaults."""
+    """Zeus configuration manager with REQUIRED Helius API validation."""
     
     DEFAULT_CONFIG = {
         "api_keys": {
             "birdeye_api_key": "",
             "cielo_api_key": "",
-            "helius_api_key": "",
+            "helius_api_key": "",  # NOW REQUIRED
             "solana_rpc_url": "https://api.mainnet-beta.solana.com"
         },
         "analysis": {
@@ -36,7 +34,8 @@ class ZeusConfig:
             "composite_score_threshold": 65.0,
             "exit_quality_threshold": 70.0,
             "enable_smart_sampling": True,
-            "timeout_seconds": 300
+            "timeout_seconds": 300,
+            "require_real_timestamps": True  # NEW: Require real timestamp data
         },
         "scoring": {
             "component_weights": {
@@ -107,9 +106,20 @@ class ZeusConfig:
         }
     }
     
+    # REQUIRED API KEYS - System cannot function without these
+    REQUIRED_API_KEYS = [
+        "cielo_api_key",    # Required for wallet trading stats
+        "helius_api_key"    # Required for accurate timestamps
+    ]
+    
+    # RECOMMENDED API KEYS - System works but with limitations
+    RECOMMENDED_API_KEYS = [
+        "birdeye_api_key"   # Recommended for enhanced token analysis
+    ]
+    
     def __init__(self, config_file: Optional[str] = None):
         """
-        Initialize Zeus configuration.
+        Initialize Zeus configuration with REQUIRED API validation.
         
         Args:
             config_file: Path to configuration file (optional)
@@ -173,7 +183,7 @@ class ZeusConfig:
         env_mappings = {
             'ZEUS_BIRDEYE_API_KEY': ['api_keys', 'birdeye_api_key'],
             'ZEUS_CIELO_API_KEY': ['api_keys', 'cielo_api_key'],
-            'ZEUS_HELIUS_API_KEY': ['api_keys', 'helius_api_key'],
+            'ZEUS_HELIUS_API_KEY': ['api_keys', 'helius_api_key'],  # NOW REQUIRED
             'ZEUS_SOLANA_RPC_URL': ['api_keys', 'solana_rpc_url'],
             'ZEUS_ANALYSIS_DAYS': ['analysis', 'days_to_analyze'],
             'ZEUS_MIN_TOKENS': ['analysis', 'min_unique_tokens'],
@@ -209,8 +219,34 @@ class ZeusConfig:
         return config
     
     def _validate_config(self) -> None:
-        """Validate configuration values."""
+        """Validate configuration values with REQUIRED API key checks."""
         try:
+            # Validate REQUIRED API keys
+            api_keys = self.config.get('api_keys', {})
+            missing_required = []
+            
+            for required_key in self.REQUIRED_API_KEYS:
+                if not api_keys.get(required_key, '').strip():
+                    missing_required.append(required_key)
+            
+            if missing_required:
+                error_msg = f"CRITICAL: Missing REQUIRED API keys: {', '.join(missing_required)}"
+                logger.error(f"❌ {error_msg}")
+                logger.error("Zeus cannot function without these API keys!")
+                logger.error("- cielo_api_key: Required for wallet trading statistics")
+                logger.error("- helius_api_key: Required for accurate transaction timestamps")
+                raise ValueError(error_msg)
+            
+            # Check RECOMMENDED API keys
+            missing_recommended = []
+            for recommended_key in self.RECOMMENDED_API_KEYS:
+                if not api_keys.get(recommended_key, '').strip():
+                    missing_recommended.append(recommended_key)
+            
+            if missing_recommended:
+                logger.warning(f"⚠️ Missing RECOMMENDED API keys: {', '.join(missing_recommended)}")
+                logger.warning("System will work but with limited functionality")
+            
             # Validate analysis settings
             analysis = self.config.get('analysis', {})
             
@@ -235,10 +271,46 @@ class ZeusConfig:
             if abs(total_weight - 1.0) > 0.01:
                 logger.warning(f"Component weights sum to {total_weight}, should be 1.0")
             
-            logger.info("Configuration validation completed")
+            logger.info("✅ Configuration validation completed - All REQUIRED APIs configured")
             
         except Exception as e:
-            logger.error(f"Error validating configuration: {str(e)}")
+            logger.error(f"❌ CRITICAL: Configuration validation failed: {str(e)}")
+            raise
+    
+    def validate_system_readiness(self) -> Dict[str, Any]:
+        """
+        Validate that the system is ready to run with all required APIs.
+        
+        Returns:
+            Dict with readiness status and details
+        """
+        api_keys = self.get_api_config()
+        
+        # Check required APIs
+        required_status = {}
+        for key in self.REQUIRED_API_KEYS:
+            required_status[key] = bool(api_keys.get(key, '').strip())
+        
+        # Check recommended APIs  
+        recommended_status = {}
+        for key in self.RECOMMENDED_API_KEYS:
+            recommended_status[key] = bool(api_keys.get(key, '').strip())
+        
+        # Determine overall readiness
+        all_required_configured = all(required_status.values())
+        
+        return {
+            'system_ready': all_required_configured,
+            'required_apis': required_status,
+            'recommended_apis': recommended_status,
+            'missing_required': [k for k, v in required_status.items() if not v],
+            'missing_recommended': [k for k, v in recommended_status.items() if not v],
+            'readiness_summary': {
+                'timestamp_accuracy': required_status.get('helius_api_key', False),
+                'wallet_analysis': required_status.get('cielo_api_key', False),
+                'enhanced_features': recommended_status.get('birdeye_api_key', False)
+            }
+        }
     
     def save_config(self, config_file: Optional[str] = None) -> bool:
         """
@@ -365,6 +437,12 @@ class ZeusConfig:
         # Update the API key in the nested structure
         self.config['api_keys'][f'{api_name}_api_key'] = api_key
         logger.info(f"Updated {api_name} API key in nested config")
+        
+        # Re-validate after updating
+        try:
+            self._validate_config()
+        except Exception as e:
+            logger.warning(f"Configuration validation warning after update: {str(e)}")
     
     def get_binary_decision_thresholds(self) -> Dict[str, float]:
         """Get binary decision thresholds."""
@@ -454,15 +532,22 @@ class ZeusConfig:
         try:
             template = {
                 "_comment": "Zeus Wallet Analysis System Configuration",
-                "_version": "1.0",
+                "_version": "2.0",
                 "_description": {
-                    "api_keys": "API keys for external services (Cielo required, others optional)",
+                    "api_keys": "API keys for external services (Cielo & Helius REQUIRED, Birdeye recommended)",
                     "analysis": "Analysis parameters and thresholds",
                     "scoring": "Scoring system weights and thresholds",
                     "output": "Output format and file settings",
                     "logging": "Logging configuration",
                     "performance": "Performance and rate limiting settings",
                     "features": "Feature toggles"
+                },
+                "_required_apis": {
+                    "cielo_api_key": "REQUIRED - Wallet trading statistics",
+                    "helius_api_key": "REQUIRED - Accurate transaction timestamps"
+                },
+                "_recommended_apis": {
+                    "birdeye_api_key": "RECOMMENDED - Enhanced token analysis"
                 }
             }
             
@@ -484,16 +569,22 @@ class ZeusConfig:
         api_keys = self.get_api_config()
         configured_apis = [name.replace('_api_key', '') for name, key in api_keys.items() if key]
         
-        return f"ZeusConfig(APIs: {', '.join(configured_apis)}, File: {self.config_file})"
+        readiness = self.validate_system_readiness()
+        status = "READY" if readiness['system_ready'] else "NOT READY"
+        
+        return f"ZeusConfig({status}, APIs: {', '.join(configured_apis)}, File: {self.config_file})"
 
 def load_zeus_config(config_file: Optional[str] = None) -> ZeusConfig:
     """
-    Load Zeus configuration.
+    Load Zeus configuration with REQUIRED API validation.
     
     Args:
         config_file: Optional configuration file path
         
     Returns:
         ZeusConfig instance
+        
+    Raises:
+        ValueError: If required API keys are missing
     """
     return ZeusConfig(config_file)
