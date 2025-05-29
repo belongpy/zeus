@@ -1,13 +1,14 @@
 """
-Zeus Configuration Management - UPDATED for Token PnL & Direct Field Features
+Zeus Configuration Management - Enhanced for Corrected Exit Analysis
 Handles configuration loading, validation, and defaults
 
-MAJOR UPDATES:
-- Token PnL analysis configuration options
-- Direct field extraction settings
-- Updated pattern recognition thresholds (5min/24hr)
-- Enhanced API validation with credit cost awareness
-- Smart TP/SL strategy configuration options
+MAJOR ENHANCEMENTS:
+- Configuration for corrected exit analysis features
+- Realistic TP/SL pattern-based defaults configuration
+- Enhanced validation to prevent inflated TP/SL recommendations
+- Pattern threshold configuration (5min/24hr)
+- Exit behavior inference settings
+- TP/SL validation and correction settings
 """
 
 import os
@@ -19,7 +20,7 @@ from pathlib import Path
 logger = logging.getLogger("zeus.config")
 
 class ZeusConfig:
-    """Zeus configuration manager with Token PnL and direct field extraction features."""
+    """Zeus configuration manager with corrected exit analysis and realistic TP/SL features."""
     
     DEFAULT_CONFIG = {
         "api_keys": {
@@ -38,17 +39,23 @@ class ZeusConfig:
             "enable_smart_sampling": True,
             "timeout_seconds": 300,
             "require_real_timestamps": True,
-            # UPDATED THRESHOLDS
-            "very_short_threshold_minutes": 5,   # NEW: 5 minutes (was 12)
-            "long_hold_threshold_hours": 24,     # NEW: 24 hours (was 48)
+            # CORRECTED THRESHOLDS
+            "very_short_threshold_minutes": 5,   # 5 minutes (corrected)
+            "long_hold_threshold_hours": 24,     # 24 hours (corrected)
             # TOKEN PNL ANALYSIS SETTINGS
-            "enable_token_pnl_analysis": True,   # NEW: Enable Token PnL endpoint
-            "token_pnl_max_limit": 10,          # NEW: Max tokens to analyze per wallet
-            "token_pnl_fallback_enabled": True, # NEW: Fallback if Token PnL fails
+            "enable_token_pnl_analysis": True,   # Enable Token PnL endpoint
+            "token_pnl_max_limit": 10,          # Max tokens to analyze per wallet
+            "token_pnl_fallback_enabled": True, # Fallback if Token PnL fails
+            # CORRECTED EXIT ANALYSIS SETTINGS
+            "enable_corrected_exit_analysis": True,     # NEW: Enable corrected exit analysis
+            "exit_behavior_inference_enabled": True,    # NEW: Infer actual vs final ROI
+            "validate_tp_sl_for_patterns": True,        # NEW: Validate TP/SL makes sense for pattern
+            "auto_correct_inflated_tp_sl": True,        # NEW: Auto-correct inflated recommendations
+            "use_realistic_pattern_defaults": True,     # NEW: Use realistic TP/SL defaults
             # DIRECT FIELD EXTRACTION SETTINGS
-            "enable_direct_field_extraction": True,  # NEW: Enable direct Cielo field extraction
-            "disable_scaling_conversions": True,     # NEW: Disable all scaling/conversion logic
-            "field_validation_enabled": True        # NEW: Enable field validation
+            "enable_direct_field_extraction": True,  # Enable direct Cielo field extraction
+            "disable_scaling_conversions": True,     # Disable all scaling/conversion logic
+            "field_validation_enabled": True        # Enable field validation
         },
         "scoring": {
             "component_weights": {
@@ -83,42 +90,104 @@ class ZeusConfig:
             "discipline": {
                 "quick_cut_hours": 4,
                 "slow_cut_days": 7,
-                "same_block_seconds": 300,  # UPDATED: 5 minutes (was 60 seconds)
+                "same_block_seconds": 300,  # 5 minutes (corrected)
                 "flipper_rate_threshold": 20
+            },
+            # CORRECTED EXIT ANALYSIS SCORING
+            "corrected_exit_analysis": {
+                "enable_exit_behavior_bonus": True,        # Bonus for good exit behavior
+                "flipper_moonshot_penalty": 0.5,           # Penalty for flippers claiming moonshots
+                "actual_exit_roi_weight": 0.7,             # Weight for actual vs final ROI
+                "exit_strategy_consistency_bonus": 0.1     # Bonus for consistent exit strategy
             }
         },
-        # SMART TP/SL CONFIGURATION
+        # REALISTIC TP/SL STRATEGY CONFIGURATION
         "tp_sl_strategy": {
             "enable_pattern_based_tp_sl": True,
+            "enable_tp_sl_validation": True,            # NEW: Validate TP/SL makes sense
+            "auto_correct_inflated_levels": True,       # NEW: Auto-correct inflated levels
+            "use_corrected_exit_analysis": True,        # NEW: Use corrected exit data
             "patterns": {
                 "flipper": {
-                    "tp1_range": [20, 50],
+                    "tp1_range": [15, 50],              # CORRECTED: Realistic flipper levels
+                    "tp2_range": [30, 80],              # CORRECTED: Realistic flipper levels
+                    "tp3_range": [50, 120],             # CORRECTED: Realistic flipper levels
+                    "stop_loss_range": [-25, -8],       # Tight SL for flippers
+                    "max_tp1": 80,                      # Hard cap for TP1
+                    "max_tp2": 120,                     # Hard cap for TP2
+                    "validation_enabled": True          # Enable validation
+                },
+                "skilled_flipper": {
+                    "tp1_range": [25, 60],
                     "tp2_range": [40, 100],
-                    "tp3_range": [80, 200],
-                    "stop_loss_range": [-25, -10]
+                    "tp3_range": [60, 150],
+                    "stop_loss_range": [-20, -10],
+                    "max_tp1": 100,
+                    "max_tp2": 150,
+                    "validation_enabled": True
+                },
+                "sniper": {
+                    "tp1_range": [30, 80],
+                    "tp2_range": [60, 150],
+                    "tp3_range": [100, 250],
+                    "stop_loss_range": [-30, -12],
+                    "max_tp1": 120,
+                    "max_tp2": 200,
+                    "validation_enabled": True
                 },
                 "gem_hunter": {
-                    "tp1_range": [100, 300],
-                    "tp2_range": [300, 700],
-                    "tp3_range": [500, 1200],
-                    "stop_loss_range": [-60, -30]
+                    "tp1_range": [60, 200],             # Higher but still realistic
+                    "tp2_range": [150, 400],            # Higher but still realistic
+                    "tp3_range": [300, 700],            # Higher but still realistic
+                    "stop_loss_range": [-50, -20],
+                    "max_tp1": 300,                     # Cap even for gem hunters
+                    "max_tp2": 600,                     # Cap even for gem hunters
+                    "validation_enabled": True
                 },
-                "consistent_trader": {
-                    "tp1_range": [50, 100],
-                    "tp2_range": [100, 250],
-                    "tp3_range": [200, 500],
-                    "stop_loss_range": [-40, -20]
+                "verified_gem_hunter": {
+                    "tp1_range": [100, 250],
+                    "tp2_range": [200, 500],
+                    "tp3_range": [400, 800],
+                    "stop_loss_range": [-45, -25],
+                    "max_tp1": 350,
+                    "max_tp2": 700,
+                    "validation_enabled": True
                 },
                 "position_trader": {
-                    "tp1_range": [75, 150],
-                    "tp2_range": [200, 400],
-                    "tp3_range": [300, 800],
-                    "stop_loss_range": [-50, -25]
+                    "tp1_range": [50, 150],
+                    "tp2_range": [100, 300],
+                    "tp3_range": [200, 500],
+                    "stop_loss_range": [-40, -20],
+                    "max_tp1": 200,
+                    "max_tp2": 400,
+                    "validation_enabled": True
+                },
+                "consistent_trader": {
+                    "tp1_range": [40, 100],
+                    "tp2_range": [80, 200],
+                    "tp3_range": [150, 350],
+                    "stop_loss_range": [-35, -15],
+                    "max_tp1": 150,
+                    "max_tp2": 300,
+                    "validation_enabled": True
                 }
             },
             "safety_buffers": {
-                "tp_buffer_multiplier": 1.1,    # 10% safety buffer for TPs
-                "sl_buffer_multiplier": 0.9     # 10% tighter SL for safety
+                "tp_buffer_multiplier": 1.0,        # No inflating buffer
+                "sl_buffer_multiplier": 1.0         # No deflating buffer
+            },
+            # EXIT BEHAVIOR INFERENCE SETTINGS
+            "exit_behavior_inference": {
+                "enable_inference": True,                       # Enable exit behavior inference
+                "flipper_exit_roi_cap": 80,                    # Cap flipper exit ROI estimates
+                "partial_exit_roi_multiplier": 0.6,            # Assume 60% of pump for partial exits
+                "diamond_hands_roi_multiplier": 0.9,           # Assume 90% for long holds
+                "quick_loss_cut_max": -20,                     # Max loss for quick cuts
+                "confidence_thresholds": {
+                    "high_confidence_patterns": ["flipper", "skilled_flipper"],
+                    "medium_confidence_patterns": ["sniper", "gem_hunter"],
+                    "low_confidence_patterns": ["mixed_strategy", "bag_holder"]
+                }
             }
         },
         "output": {
@@ -129,7 +198,7 @@ class ZeusConfig:
             "sort_by_score": True,
             "export_formats": ["csv", "summary"],
             "timestamp_format": "%Y%m%d_%H%M%S",
-            # UPDATED CSV SETTINGS
+            # CSV SETTINGS WITH CORRECTED TP/SL
             "csv_precision": {
                 "days_since_last_trade": 1,     # 1 decimal place
                 "avg_sol_buy_per_token": 1,     # 1 decimal place
@@ -137,8 +206,16 @@ class ZeusConfig:
                 "roi_values": 2,                # 2 decimal places
                 "usd_values": 1                 # 1 decimal place
             },
-            "exclude_columns": ["total_buys_30_days", "total_sells_30_days"],  # REMOVED columns
-            "include_columns": ["unique_tokens_30d"]  # NEW column
+            "exclude_columns": ["total_buys_30_days", "total_sells_30_days"],
+            "include_columns": ["unique_tokens_30d"],
+            # CORRECTED TP/SL EXPORT SETTINGS
+            "tp_sl_export": {
+                "validate_before_export": True,         # Validate TP/SL before export
+                "show_validation_warnings": True,       # Show validation warnings in export
+                "include_pattern_context": True,        # Include pattern in TP/SL export
+                "cap_inflated_levels": True,            # Cap inflated levels automatically
+                "export_corrected_values": True         # Export corrected values instead of raw
+            }
         },
         "logging": {
             "level": "INFO",
@@ -146,10 +223,14 @@ class ZeusConfig:
             "max_file_size_mb": 10,
             "backup_count": 3,
             "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            # ENHANCED LOGGING
-            "log_api_responses": False,         # Log full API responses (debug mode)
-            "log_field_discovery": True,       # Log Cielo field discovery
-            "log_pattern_analysis": True       # Log trade pattern analysis
+            # ENHANCED LOGGING FOR CORRECTED ANALYSIS
+            "log_api_responses": False,                 # Log full API responses (debug mode)
+            "log_field_discovery": True,               # Log Cielo field discovery
+            "log_pattern_analysis": True,              # Log trade pattern analysis
+            "log_exit_behavior_inference": True,       # NEW: Log exit behavior inference
+            "log_tp_sl_validation": True,              # NEW: Log TP/SL validation
+            "log_corrected_analysis": True,            # NEW: Log corrected analysis details
+            "log_inflation_detection": True            # NEW: Log inflated TP/SL detection
         },
         "performance": {
             "max_concurrent_analyses": 3,
@@ -174,12 +255,38 @@ class ZeusConfig:
             "enable_market_cap_analysis": True,
             "enable_bot_detection": True,
             "enable_pattern_recognition": True,
-            # NEW FEATURES
-            "enable_token_pnl_analysis": True,      # NEW: Token PnL analysis
-            "enable_smart_tp_sl": True,             # NEW: Smart TP/SL recommendations
-            "enable_direct_field_extraction": True, # NEW: Direct field extraction
-            "enable_field_validation": True,        # NEW: Field validation
-            "enable_pattern_based_strategies": True # NEW: Pattern-based strategies
+            # CORRECTED EXIT ANALYSIS FEATURES
+            "enable_token_pnl_analysis": True,              # Token PnL analysis
+            "enable_corrected_exit_analysis": True,         # NEW: Corrected exit analysis
+            "enable_realistic_tp_sl": True,                 # NEW: Realistic TP/SL recommendations
+            "enable_exit_behavior_inference": True,         # NEW: Exit behavior inference
+            "enable_tp_sl_validation": True,                # NEW: TP/SL validation
+            "enable_pattern_based_strategies": True,        # Pattern-based strategies
+            "enable_inflation_detection": True,             # NEW: Detect inflated TP/SL
+            "enable_auto_correction": True,                 # NEW: Auto-correct inflated levels
+            # LEGACY FEATURES
+            "enable_smart_tp_sl": True,                     # Legacy: Smart TP/SL (now corrected)
+            "enable_direct_field_extraction": True,        # Direct field extraction
+            "enable_field_validation": True                # Field validation
+        },
+        # VALIDATION AND CORRECTION SETTINGS
+        "validation": {
+            "enable_comprehensive_validation": True,        # Enable comprehensive validation
+            "tp_sl_validation": {
+                "enable_pattern_validation": True,         # Validate TP/SL for patterns
+                "enable_inflation_detection": True,        # Detect inflated levels
+                "enable_auto_correction": True,            # Auto-correct inflated levels
+                "severity_thresholds": {
+                    "critical": {"flipper_tp1_over": 150, "any_tp1_over": 500},
+                    "high": {"flipper_tp1_over": 100, "any_tp1_over": 300},
+                    "moderate": {"flipper_tp1_over": 80, "any_tp1_over": 200}
+                }
+            },
+            "exit_analysis_validation": {
+                "require_minimum_swaps": 1,                # Minimum swaps for analysis
+                "require_realistic_hold_times": True,      # Validate hold times
+                "flag_impossible_scenarios": True          # Flag impossible exit scenarios
+            }
         }
     }
     
@@ -196,7 +303,7 @@ class ZeusConfig:
     
     def __init__(self, config_file: Optional[str] = None):
         """
-        Initialize Zeus configuration with Token PnL and direct field extraction features.
+        Initialize Zeus configuration with corrected exit analysis features.
         
         Args:
             config_file: Path to configuration file (optional)
@@ -204,7 +311,7 @@ class ZeusConfig:
         self.config_file = config_file or self._get_default_config_path()
         self.config = self._load_config()
         self._validate_config()
-        self._setup_new_features()
+        self._setup_corrected_features()
     
     def _get_default_config_path(self) -> str:
         """Get default configuration file path - prioritize local config."""
@@ -235,9 +342,9 @@ class ZeusConfig:
                 logger.info(f"Loaded configuration from: {self.config_file}")
             except Exception as e:
                 logger.warning(f"Error loading config file {self.config_file}: {str(e)}")
-                logger.info("Using default configuration")
+                logger.info("Using default configuration with CORRECTED EXIT ANALYSIS")
         else:
-            logger.info("Configuration file not found, using defaults with NEW features")
+            logger.info("Configuration file not found, using defaults with CORRECTED EXIT ANALYSIS features")
         
         # Override with environment variables
         config = self._apply_env_overrides(config)
@@ -267,9 +374,11 @@ class ZeusConfig:
             'ZEUS_MIN_TOKENS': ['analysis', 'min_unique_tokens'],
             'ZEUS_SCORE_THRESHOLD': ['analysis', 'composite_score_threshold'],
             'ZEUS_LOG_LEVEL': ['logging', 'level'],
-            # NEW ENVIRONMENT VARIABLES
-            'ZEUS_ENABLE_TOKEN_PNL': ['features', 'enable_token_pnl_analysis'],
-            'ZEUS_ENABLE_SMART_TP_SL': ['features', 'enable_smart_tp_sl'],
+            # CORRECTED EXIT ANALYSIS ENVIRONMENT VARIABLES
+            'ZEUS_ENABLE_CORRECTED_EXIT_ANALYSIS': ['features', 'enable_corrected_exit_analysis'],
+            'ZEUS_ENABLE_REALISTIC_TP_SL': ['features', 'enable_realistic_tp_sl'],
+            'ZEUS_ENABLE_TP_SL_VALIDATION': ['features', 'enable_tp_sl_validation'],
+            'ZEUS_ENABLE_AUTO_CORRECTION': ['features', 'enable_auto_correction'],
             'ZEUS_VERY_SHORT_MINUTES': ['analysis', 'very_short_threshold_minutes'],
             'ZEUS_LONG_HOLD_HOURS': ['analysis', 'long_hold_threshold_hours']
         }
@@ -293,7 +402,8 @@ class ZeusConfig:
                         current[final_key] = int(env_value)
                     elif final_key in ['composite_score_threshold', 'exit_quality_threshold']:
                         current[final_key] = float(env_value)
-                    elif final_key in ['enable_token_pnl_analysis', 'enable_smart_tp_sl']:
+                    elif final_key in ['enable_corrected_exit_analysis', 'enable_realistic_tp_sl', 
+                                     'enable_tp_sl_validation', 'enable_auto_correction']:
                         current[final_key] = env_value.lower() in ['true', '1', 'yes', 'on']
                     else:
                         current[final_key] = env_value
@@ -305,7 +415,7 @@ class ZeusConfig:
         return config
     
     def _validate_config(self) -> None:
-        """Validate configuration values with REQUIRED API key checks."""
+        """Validate configuration values with REQUIRED API key checks and corrected features."""
         try:
             # Validate REQUIRED API keys
             api_keys = self.config.get('api_keys', {})
@@ -342,7 +452,7 @@ class ZeusConfig:
             if not (1 <= analysis.get('min_unique_tokens', 6) <= 100):
                 logger.warning("min_unique_tokens should be between 1 and 100")
             
-            # Validate NEW thresholds
+            # Validate CORRECTED thresholds
             very_short_minutes = analysis.get('very_short_threshold_minutes', 5)
             if not (0.1 <= very_short_minutes <= 60):
                 logger.warning("very_short_threshold_minutes should be between 0.1 and 60")
@@ -351,95 +461,155 @@ class ZeusConfig:
             if not (1 <= long_hold_hours <= 168):  # Max 1 week
                 logger.warning("long_hold_threshold_hours should be between 1 and 168")
             
-            # Validate Token PnL settings
-            token_pnl_limit = analysis.get('token_pnl_max_limit', 10)
-            if not (1 <= token_pnl_limit <= 20):
-                logger.warning("token_pnl_max_limit should be between 1 and 20")
-            
-            # Validate scoring thresholds
-            score_threshold = analysis.get('composite_score_threshold', 65.0)
-            if not (0 <= score_threshold <= 100):
-                logger.warning("composite_score_threshold should be between 0 and 100")
-            
-            # Validate component weights
-            scoring = self.config.get('scoring', {})
-            weights = scoring.get('component_weights', {})
-            total_weight = sum(weights.values())
-            if abs(total_weight - 1.0) > 0.01:
-                logger.warning(f"Component weights sum to {total_weight}, should be 1.0")
+            # Validate TP/SL pattern configuration
+            self._validate_tp_sl_patterns()
             
             logger.info("✅ Configuration validation completed - All REQUIRED APIs configured")
-            logger.info("🎯 NEW FEATURES: Token PnL analysis, Smart TP/SL, Direct field extraction")
+            logger.info("🎯 CORRECTED EXIT ANALYSIS: Realistic TP/SL, Pattern validation, Auto-correction")
             
         except Exception as e:
             logger.error(f"❌ CRITICAL: Configuration validation failed: {str(e)}")
             raise
     
-    def _setup_new_features(self) -> None:
-        """Setup and validate new feature configurations."""
+    def _validate_tp_sl_patterns(self) -> None:
+        """Validate TP/SL pattern configuration for realism."""
+        try:
+            tp_sl_config = self.config.get('tp_sl_strategy', {})
+            patterns = tp_sl_config.get('patterns', {})
+            
+            for pattern_name, pattern_config in patterns.items():
+                if not isinstance(pattern_config, dict):
+                    continue
+                
+                # Check for realistic ranges
+                tp1_range = pattern_config.get('tp1_range', [0, 100])
+                tp2_range = pattern_config.get('tp2_range', [0, 200])
+                max_tp1 = pattern_config.get('max_tp1', 100)
+                max_tp2 = pattern_config.get('max_tp2', 200)
+                
+                # Validate flipper patterns have realistic caps
+                if pattern_name in ['flipper', 'skilled_flipper']:
+                    if max_tp1 > 150:
+                        logger.warning(f"Pattern {pattern_name} has high max_tp1: {max_tp1}% (consider <100%)")
+                    if max_tp2 > 200:
+                        logger.warning(f"Pattern {pattern_name} has high max_tp2: {max_tp2}% (consider <150%)")
+                
+                # Validate ranges make sense
+                if len(tp1_range) >= 2 and tp1_range[1] > max_tp1:
+                    logger.warning(f"Pattern {pattern_name}: tp1_range max ({tp1_range[1]}) > max_tp1 ({max_tp1})")
+                
+                if len(tp2_range) >= 2 and tp2_range[1] > max_tp2:
+                    logger.warning(f"Pattern {pattern_name}: tp2_range max ({tp2_range[1]}) > max_tp2 ({max_tp2})")
+            
+            logger.info("✅ TP/SL pattern configuration validated")
+            
+        except Exception as e:
+            logger.warning(f"TP/SL pattern validation warning: {str(e)}")
+    
+    def _setup_corrected_features(self) -> None:
+        """Setup and validate corrected exit analysis features."""
         try:
             features = self.config.get('features', {})
             
-            # Token PnL Analysis setup
-            if features.get('enable_token_pnl_analysis', True):
-                logger.info("✅ Token PnL Analysis: ENABLED (5 credits per wallet)")
+            # Corrected Exit Analysis setup
+            if features.get('enable_corrected_exit_analysis', True):
+                logger.info("✅ Corrected Exit Analysis: ENABLED (separates actual vs final ROI)")
                 
-                # Validate Token PnL settings
+                # Validate corrected analysis settings
                 analysis = self.config.get('analysis', {})
-                max_limit = analysis.get('token_pnl_max_limit', 10)
-                logger.info(f"   Max tokens per analysis: {max_limit}")
+                exit_behavior_enabled = analysis.get('exit_behavior_inference_enabled', True)
+                logger.info(f"   Exit behavior inference: {exit_behavior_enabled}")
                 
-                fallback_enabled = analysis.get('token_pnl_fallback_enabled', True)
-                logger.info(f"   Fallback enabled: {fallback_enabled}")
+                tp_sl_validation = analysis.get('validate_tp_sl_for_patterns', True)
+                logger.info(f"   TP/SL pattern validation: {tp_sl_validation}")
+                
+                auto_correct = analysis.get('auto_correct_inflated_tp_sl', True)
+                logger.info(f"   Auto-correct inflated TP/SL: {auto_correct}")
             else:
-                logger.warning("⚠️ Token PnL Analysis: DISABLED")
+                logger.warning("⚠️ Corrected Exit Analysis: DISABLED")
             
-            # Smart TP/SL setup
-            if features.get('enable_smart_tp_sl', True):
-                logger.info("✅ Smart TP/SL Recommendations: ENABLED")
+            # Realistic TP/SL setup
+            if features.get('enable_realistic_tp_sl', True):
+                logger.info("✅ Realistic TP/SL Recommendations: ENABLED")
                 
                 tp_sl_config = self.config.get('tp_sl_strategy', {})
                 pattern_based = tp_sl_config.get('enable_pattern_based_tp_sl', True)
-                logger.info(f"   Pattern-based strategies: {pattern_based}")
+                validation_enabled = tp_sl_config.get('enable_tp_sl_validation', True)
+                auto_correct_enabled = tp_sl_config.get('auto_correct_inflated_levels', True)
+                
+                logger.info(f"   Pattern-based TP/SL: {pattern_based}")
+                logger.info(f"   TP/SL validation: {validation_enabled}")
+                logger.info(f"   Auto-correction: {auto_correct_enabled}")
                 
                 patterns = tp_sl_config.get('patterns', {})
                 logger.info(f"   Configured patterns: {list(patterns.keys())}")
             else:
-                logger.warning("⚠️ Smart TP/SL Recommendations: DISABLED")
+                logger.warning("⚠️ Realistic TP/SL Recommendations: DISABLED")
             
-            # Direct Field Extraction setup
-            if features.get('enable_direct_field_extraction', True):
-                logger.info("✅ Direct Field Extraction: ENABLED")
+            # TP/SL Validation setup
+            if features.get('enable_tp_sl_validation', True):
+                logger.info("✅ TP/SL Validation: ENABLED (prevents inflated recommendations)")
                 
-                analysis = self.config.get('analysis', {})
-                disable_scaling = analysis.get('disable_scaling_conversions', True)
-                logger.info(f"   Scaling/conversions disabled: {disable_scaling}")
+                validation_config = self.config.get('validation', {}).get('tp_sl_validation', {})
+                pattern_validation = validation_config.get('enable_pattern_validation', True)
+                inflation_detection = validation_config.get('enable_inflation_detection', True)
+                auto_correction = validation_config.get('enable_auto_correction', True)
                 
-                field_validation = analysis.get('field_validation_enabled', True)
-                logger.info(f"   Field validation enabled: {field_validation}")
+                logger.info(f"   Pattern validation: {pattern_validation}")
+                logger.info(f"   Inflation detection: {inflation_detection}")
+                logger.info(f"   Auto-correction: {auto_correction}")
             else:
-                logger.warning("⚠️ Direct Field Extraction: DISABLED")
+                logger.warning("⚠️ TP/SL Validation: DISABLED")
             
-            # Pattern Recognition setup
+            # Pattern Recognition setup with corrected thresholds
             if features.get('enable_pattern_based_strategies', True):
-                logger.info("✅ Pattern-based Strategies: ENABLED")
+                logger.info("✅ Pattern-based Strategies: ENABLED with CORRECTED thresholds")
                 
                 analysis = self.config.get('analysis', {})
                 very_short = analysis.get('very_short_threshold_minutes', 5)
                 long_hold = analysis.get('long_hold_threshold_hours', 24)
-                logger.info(f"   Updated thresholds: <{very_short}min | >{long_hold}hr")
+                logger.info(f"   CORRECTED thresholds: <{very_short}min | >{long_hold}hr")
+                logger.info(f"   Pattern validation: Enabled for realistic TP/SL")
             else:
                 logger.warning("⚠️ Pattern-based Strategies: DISABLED")
             
         except Exception as e:
-            logger.warning(f"Warning during new feature setup: {str(e)}")
+            logger.warning(f"Warning during corrected features setup: {str(e)}")
     
-    def validate_system_readiness(self) -> Dict[str, Any]:
+    def get_corrected_exit_analysis_config(self) -> Dict[str, Any]:
+        """Get corrected exit analysis configuration."""
+        return {
+            'enabled': self.is_feature_enabled('enable_corrected_exit_analysis'),
+            'exit_behavior_inference': self.config.get('analysis', {}).get('exit_behavior_inference_enabled', True),
+            'tp_sl_validation': self.config.get('analysis', {}).get('validate_tp_sl_for_patterns', True),
+            'auto_correct_inflated': self.config.get('analysis', {}).get('auto_correct_inflated_tp_sl', True),
+            'use_realistic_defaults': self.config.get('analysis', {}).get('use_realistic_pattern_defaults', True),
+            'thresholds': self.get_pattern_thresholds(),
+            'exit_behavior_inference_config': self.config.get('tp_sl_strategy', {}).get('exit_behavior_inference', {})
+        }
+    
+    def get_tp_sl_validation_config(self) -> Dict[str, Any]:
+        """Get TP/SL validation configuration."""
+        return self.config.get('validation', {}).get('tp_sl_validation', {})
+    
+    def get_realistic_tp_sl_config(self) -> Dict[str, Any]:
+        """Get realistic TP/SL configuration."""
+        tp_sl_config = self.config.get('tp_sl_strategy', {})
+        return {
+            'enabled': tp_sl_config.get('enable_pattern_based_tp_sl', True),
+            'validation_enabled': tp_sl_config.get('enable_tp_sl_validation', True),
+            'auto_correct_enabled': tp_sl_config.get('auto_correct_inflated_levels', True),
+            'use_corrected_analysis': tp_sl_config.get('use_corrected_exit_analysis', True),
+            'patterns': tp_sl_config.get('patterns', {}),
+            'exit_behavior_inference': tp_sl_config.get('exit_behavior_inference', {})
+        }
+    
+    def validate_system_readiness_corrected(self) -> Dict[str, Any]:
         """
-        Validate that the system is ready to run with all required APIs and new features.
+        Validate that the system is ready to run with corrected exit analysis features.
         
         Returns:
-            Dict with readiness status and details
+            Dict with readiness status and corrected features details
         """
         api_keys = self.get_api_config()
         
@@ -453,13 +623,15 @@ class ZeusConfig:
         for key in self.RECOMMENDED_API_KEYS:
             recommended_status[key] = bool(api_keys.get(key, '').strip())
         
-        # Check new features
+        # Check corrected features
         features = self.config.get('features', {})
-        new_features_status = {
-            'token_pnl_analysis': features.get('enable_token_pnl_analysis', True),
-            'smart_tp_sl': features.get('enable_smart_tp_sl', True),
-            'direct_field_extraction': features.get('enable_direct_field_extraction', True),
-            'pattern_based_strategies': features.get('enable_pattern_based_strategies', True)
+        corrected_features_status = {
+            'corrected_exit_analysis': features.get('enable_corrected_exit_analysis', True),
+            'realistic_tp_sl': features.get('enable_realistic_tp_sl', True),
+            'tp_sl_validation': features.get('enable_tp_sl_validation', True),
+            'exit_behavior_inference': features.get('enable_exit_behavior_inference', True),
+            'inflation_detection': features.get('enable_inflation_detection', True),
+            'auto_correction': features.get('enable_auto_correction', True)
         }
         
         # Determine overall readiness
@@ -469,28 +641,29 @@ class ZeusConfig:
             'system_ready': all_required_configured,
             'required_apis': required_status,
             'recommended_apis': recommended_status,
-            'new_features': new_features_status,
+            'corrected_features': corrected_features_status,
             'missing_required': [k for k, v in required_status.items() if not v],
             'missing_recommended': [k for k, v in recommended_status.items() if not v],
             'readiness_summary': {
                 'trading_stats_ready': required_status.get('cielo_api_key', False),
-                'token_pnl_ready': required_status.get('cielo_api_key', False) and new_features_status.get('token_pnl_analysis', False),
+                'token_pnl_ready': required_status.get('cielo_api_key', False) and corrected_features_status.get('corrected_exit_analysis', False),
                 'timestamp_accuracy': required_status.get('helius_api_key', False),
-                'smart_tp_sl_ready': all_required_configured and new_features_status.get('smart_tp_sl', False),
-                'direct_extraction_ready': new_features_status.get('direct_field_extraction', False),
+                'corrected_exit_analysis_ready': all_required_configured and corrected_features_status.get('corrected_exit_analysis', False),
+                'realistic_tp_sl_ready': corrected_features_status.get('realistic_tp_sl', False),
+                'tp_sl_validation_ready': corrected_features_status.get('tp_sl_validation', False),
                 'enhanced_features': recommended_status.get('birdeye_api_key', False)
             }
         }
     
-    def get_cost_estimate(self, wallet_count: int) -> Dict[str, Any]:
+    def get_cost_estimate_corrected(self, wallet_count: int) -> Dict[str, Any]:
         """
-        Calculate estimated API costs for analysis.
+        Calculate estimated API costs for analysis with corrected features.
         
         Args:
             wallet_count: Number of wallets to analyze
             
         Returns:
-            Dict with cost breakdown
+            Cost estimate breakdown with corrected features
         """
         try:
             costs = self.config.get('performance', {}).get('api_costs', {})
@@ -504,17 +677,20 @@ class ZeusConfig:
             cost_breakdown['trading_stats'] = {
                 'cost_per_wallet': costs.get('cielo_trading_stats', 30),
                 'total_cost': trading_stats_cost,
-                'description': 'Cielo Trading Stats (REQUIRED)'
+                'required': True,
+                'description': 'Cielo Trading Stats (REQUIRED for corrected analysis)'
             }
             total_cost += trading_stats_cost
             
-            # Token PnL cost (NEW FEATURE)
-            if features.get('enable_token_pnl_analysis', True):
+            # Token PnL cost for corrected exit analysis
+            if features.get('enable_corrected_exit_analysis', True):
                 token_pnl_cost = wallet_count * costs.get('cielo_token_pnl', 5)
-                cost_breakdown['token_pnl'] = {
+                cost_breakdown['corrected_token_pnl'] = {
                     'cost_per_wallet': costs.get('cielo_token_pnl', 5),
                     'total_cost': token_pnl_cost,
-                    'description': 'Token PnL Analysis (NEW)'
+                    'required': False,
+                    'feature': 'Corrected Exit Analysis & Realistic TP/SL',
+                    'description': 'Token PnL for exit behavior inference'
                 }
                 total_cost += token_pnl_cost
             
@@ -524,6 +700,8 @@ class ZeusConfig:
                 cost_breakdown['birdeye'] = {
                     'cost_per_wallet': costs.get('birdeye_token_price', 1),
                     'total_cost': birdeye_cost,
+                    'required': False,
+                    'feature': 'Enhanced Token Analysis',
                     'description': 'Birdeye Enhanced Analysis (OPTIONAL)'
                 }
                 total_cost += birdeye_cost
@@ -536,98 +714,27 @@ class ZeusConfig:
             return {
                 'cost_breakdown': cost_breakdown,
                 'total_cost': total_cost,
-                'cost_per_wallet': total_cost / wallet_count if wallet_count > 0 else 0,
+                'cost_per_wallet': round(total_cost / wallet_count, 2) if wallet_count > 0 else 0,
                 'daily_limit': daily_limit,
                 'warn_threshold': warn_threshold,
                 'exceeds_daily_limit': total_cost > daily_limit,
                 'exceeds_warn_threshold': total_cost > (daily_limit * warn_threshold),
-                'wallet_count': wallet_count
+                'wallet_count': wallet_count,
+                'corrected_features_enabled': True,
+                'features_breakdown': {
+                    'corrected_exit_analysis': features.get('enable_corrected_exit_analysis', True),
+                    'realistic_tp_sl': features.get('enable_realistic_tp_sl', True),
+                    'tp_sl_validation': features.get('enable_tp_sl_validation', True)
+                }
             }
             
         except Exception as e:
-            logger.error(f"Error calculating cost estimate: {str(e)}")
+            logger.error(f"Error calculating corrected cost estimate: {str(e)}")
             return {
-                'error': str(e),
                 'total_cost': 0,
+                'error': str(e),
                 'wallet_count': wallet_count
             }
-    
-    def save_config(self, config_file: Optional[str] = None) -> bool:
-        """
-        Save current configuration to file.
-        
-        Args:
-            config_file: Optional config file path
-            
-        Returns:
-            bool: True if successful
-        """
-        try:
-            save_path = config_file or self.config_file
-            
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            
-            # Save configuration
-            with open(save_path, 'w') as f:
-                json.dump(self.config, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"Configuration saved to: {save_path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error saving configuration: {str(e)}")
-            return False
-    
-    def get(self, key_path: str, default: Any = None) -> Any:
-        """
-        Get configuration value by dot-separated path.
-        
-        Args:
-            key_path: Dot-separated key path (e.g., 'analysis.days_to_analyze')
-            default: Default value if key not found
-            
-        Returns:
-            Configuration value or default
-        """
-        try:
-            keys = key_path.split('.')
-            current = self.config
-            
-            for key in keys:
-                if isinstance(current, dict) and key in current:
-                    current = current[key]
-                else:
-                    return default
-            
-            return current
-            
-        except Exception:
-            return default
-    
-    def set(self, key_path: str, value: Any) -> None:
-        """
-        Set configuration value by dot-separated path.
-        
-        Args:
-            key_path: Dot-separated key path
-            value: Value to set
-        """
-        try:
-            keys = key_path.split('.')
-            current = self.config
-            
-            # Navigate to parent
-            for key in keys[:-1]:
-                if key not in current:
-                    current[key] = {}
-                current = current[key]
-            
-            # Set final value
-            current[keys[-1]] = value
-            
-        except Exception as e:
-            logger.error(f"Error setting config value {key_path}: {str(e)}")
     
     def get_api_config(self) -> Dict[str, str]:
         """Get API configuration from nested api_keys section."""
@@ -642,7 +749,7 @@ class ZeusConfig:
         return self.config.get('scoring', {})
     
     def get_tp_sl_config(self) -> Dict[str, Any]:
-        """Get TP/SL strategy configuration (NEW)."""
+        """Get TP/SL strategy configuration."""
         return self.config.get('tp_sl_strategy', {})
     
     def get_output_config(self) -> Dict[str, Any]:
@@ -667,7 +774,7 @@ class ZeusConfig:
         return features.get(feature_name, False)
     
     def get_pattern_thresholds(self) -> Dict[str, float]:
-        """Get updated pattern recognition thresholds (NEW)."""
+        """Get corrected pattern recognition thresholds."""
         analysis = self.get_analysis_config()
         return {
             'very_short_threshold_minutes': analysis.get('very_short_threshold_minutes', 5),
@@ -675,135 +782,23 @@ class ZeusConfig:
             'long_hold_threshold_hours': analysis.get('long_hold_threshold_hours', 24)
         }
     
-    def update_api_key(self, api_name: str, api_key: str) -> None:
-        """
-        Update API key in nested api_keys configuration.
-        
-        Args:
-            api_name: Name of the API (birdeye, cielo, helius)
-            api_key: API key value
-        """
-        # Ensure api_keys section exists
-        if 'api_keys' not in self.config:
-            self.config['api_keys'] = {}
-        
-        # Update the API key in the nested structure
-        self.config['api_keys'][f'{api_name}_api_key'] = api_key
-        logger.info(f"Updated {api_name} API key in nested config")
-        
-        # Re-validate after updating
-        try:
-            self._validate_config()
-        except Exception as e:
-            logger.warning(f"Configuration validation warning after update: {str(e)}")
-    
-    def get_binary_decision_thresholds(self) -> Dict[str, float]:
-        """Get binary decision thresholds."""
-        analysis = self.get_analysis_config()
-        return {
-            'composite_score_threshold': analysis.get('composite_score_threshold', 65.0),
-            'exit_quality_threshold': analysis.get('exit_quality_threshold', 70.0)
-        }
-    
-    def get_volume_qualifier_config(self) -> Dict[str, Any]:
-        """Get volume qualifier configuration."""
-        scoring = self.get_scoring_config()
-        return scoring.get('volume_qualifier', {})
-    
-    def create_default_config_file(self, config_path: str) -> bool:
-        """
-        Create a default configuration file.
-        
-        Args:
-            config_path: Path to create config file
-            
-        Returns:
-            bool: True if successful
-        """
-        try:
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(config_path), exist_ok=True)
-            
-            # Write default configuration
-            with open(config_path, 'w') as f:
-                json.dump(self.DEFAULT_CONFIG, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"Created default configuration file: {config_path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error creating default config file: {str(e)}")
-            return False
-    
-    def export_config_template(self, output_path: str) -> bool:
-        """
-        Export configuration template with comments for new features.
-        
-        Args:
-            output_path: Path to save template
-            
-        Returns:
-            bool: True if successful
-        """
-        try:
-            template = {
-                "_comment": "Zeus Wallet Analysis System Configuration",
-                "_version": "2.2",
-                "_description": {
-                    "api_keys": "API keys for external services (Cielo & Helius REQUIRED, Birdeye recommended)",
-                    "analysis": "Analysis parameters and thresholds with NEW Token PnL settings",
-                    "scoring": "Scoring system weights and thresholds", 
-                    "tp_sl_strategy": "NEW: Smart TP/SL strategy configuration",
-                    "output": "Output format and file settings with NEW CSV options",
-                    "logging": "Logging configuration",
-                    "performance": "Performance and rate limiting settings with cost tracking",
-                    "features": "Feature toggles including NEW features"
-                },
-                "_required_apis": {
-                    "cielo_api_key": "REQUIRED - Trading Stats (30 credits) + Token PnL (5 credits)",
-                    "helius_api_key": "REQUIRED - Accurate transaction timestamps"
-                },
-                "_recommended_apis": {
-                    "birdeye_api_key": "RECOMMENDED - Enhanced token analysis"
-                },
-                "_new_features": {
-                    "token_pnl_analysis": "NEW - Real trade pattern analysis (5 credits per wallet)",
-                    "smart_tp_sl": "NEW - Pattern-based TP/SL recommendations",
-                    "direct_field_extraction": "NEW - Direct Cielo field extraction (no scaling)",
-                    "updated_thresholds": "NEW - 5min (very short) | 24hr (long holds)"
-                }
-            }
-            
-            # Merge with default config
-            template.update(self.DEFAULT_CONFIG)
-            
-            with open(output_path, 'w') as f:
-                json.dump(template, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"Configuration template exported to: {output_path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error exporting config template: {str(e)}")
-            return False
-    
     def __str__(self) -> str:
         """String representation of configuration."""
         api_keys = self.get_api_config()
         configured_apis = [name.replace('_api_key', '') for name, key in api_keys.items() if key]
         
-        readiness = self.validate_system_readiness()
+        readiness = self.validate_system_readiness_corrected()
         status = "READY" if readiness['system_ready'] else "NOT READY"
         
-        # Show new features status
-        new_features = readiness.get('new_features', {})
-        enabled_features = [name for name, enabled in new_features.items() if enabled]
+        # Show corrected features status
+        corrected_features = readiness.get('corrected_features', {})
+        enabled_features = [name for name, enabled in corrected_features.items() if enabled]
         
-        return f"ZeusConfig({status}, APIs: {', '.join(configured_apis)}, Features: {', '.join(enabled_features)}, File: {self.config_file})"
+        return f"ZeusConfig({status}, APIs: {', '.join(configured_apis)}, Corrected Features: {', '.join(enabled_features)}, File: {self.config_file})"
 
 def load_zeus_config(config_file: Optional[str] = None) -> ZeusConfig:
     """
-    Load Zeus configuration with Token PnL and direct field extraction features.
+    Load Zeus configuration with corrected exit analysis features.
     
     Args:
         config_file: Optional configuration file path
