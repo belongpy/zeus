@@ -1,10 +1,10 @@
 """
-Zeus API Manager - FIXED with Direct Field Extraction and Token PnL Analysis
+Zeus API Manager - FIXED with Correct Token PnL Structure and Field Discovery
 MAJOR FIXES:
-- Added Token PnL endpoint for real trade analysis (5 credits vs 30)
-- Complete field discovery and validation
-- Direct Cielo field extraction without conversions
-- Enhanced debugging for exact field mapping
+- Fixed Token PnL endpoint parsing (data.items[] not data.tokens[])
+- Enhanced field discovery and validation for Trading Stats
+- Complete authentication method testing
+- Correct response structure handling
 """
 
 import logging
@@ -17,7 +17,7 @@ import dateutil.parser
 logger = logging.getLogger("zeus.api_manager")
 
 class ZeusAPIManager:
-    """Zeus API manager with Token PnL analysis and direct field extraction."""
+    """Zeus API manager with CORRECT Token PnL analysis and field extraction."""
     
     def __init__(self, birdeye_api_key: str = "", cielo_api_key: str = "", 
                  helius_api_key: str = "", rpc_url: str = "https://api.mainnet-beta.solana.com"):
@@ -52,7 +52,7 @@ class ZeusAPIManager:
         # Request session
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Zeus-Wallet-Analyzer/2.1-Direct-Fields',
+            'User-Agent': 'Zeus-Wallet-Analyzer/2.2-Correct-Fields',
             'Accept': 'application/json'
         })
         
@@ -60,10 +60,10 @@ class ZeusAPIManager:
     
     def _initialize_apis(self):
         """Initialize API configurations with validation."""
-        logger.info("🔧 Initializing Zeus API Manager with DIRECT FIELD EXTRACTION...")
+        logger.info("🔧 Initializing Zeus API Manager with CORRECT FIELD EXTRACTION...")
         
         if self.cielo_api_key:
-            logger.info("✅ Cielo Finance API key configured (Trading Stats + Token PnL)")
+            logger.info("✅ Cielo Finance API key configured (Trading Stats + CORRECT Token PnL)")
         else:
             logger.error("❌ CRITICAL: Cielo Finance API key missing")
             raise ValueError("Cielo Finance API key is REQUIRED")
@@ -270,7 +270,7 @@ class ZeusAPIManager:
     
     def get_wallet_trading_stats(self, wallet_address: str) -> Dict[str, Any]:
         """
-        Get wallet trading statistics from Cielo Finance Trading Stats API with COMPLETE FIELD DISCOVERY.
+        Get wallet trading statistics from Cielo Finance Trading Stats API with CORRECT FIELD DISCOVERY.
         Cost: 30 credits
         """
         try:
@@ -304,26 +304,26 @@ class ZeusAPIManager:
             
             # Try each authentication method
             for i, auth_header in enumerate(auth_methods, 1):
-                headers = {**base_headers, **auth_header}
                 auth_method = list(auth_header.keys())[0]
                 
                 logger.debug(f"Trying Cielo auth method {i}/{len(auth_methods)}: {auth_method}")
                 
                 try:
+                    headers = {**base_headers, **auth_header}
                     response = self.session.get(url, headers=headers, timeout=30)
                     
                     logger.debug(f"Cielo Trading Stats response: HTTP {response.status_code}")
                     
                     if response.status_code == 200:
-                        # SUCCESS - Extract complete response data with COMPLETE FIELD DISCOVERY
+                        # SUCCESS - Extract complete response data with CORRECT FIELD DISCOVERY
                         try:
                             response_data = response.json()
                             self.api_stats['cielo_trading_stats']['success'] += 1
                             
                             logger.info(f"✅ Cielo Trading Stats API success with {auth_method}!")
                             
-                            # COMPLETE FIELD DISCOVERY: Log the exact API response structure
-                            logger.info(f"🔍 COMPLETE CIELO TRADING STATS FIELDS for {wallet_address[:8]}:")
+                            # CORRECT FIELD DISCOVERY: Log the exact API response structure
+                            logger.info(f"🔍 CORRECT CIELO TRADING STATS FIELDS for {wallet_address[:8]}:")
                             logger.info(f"  Response type: {type(response_data)}")
                             
                             if isinstance(response_data, dict):
@@ -336,25 +336,26 @@ class ZeusAPIManager:
                                     logger.info(f"  Trading data keys: {list(actual_trading_data.keys())}")
                                     logger.info(f"  Field count: {len(actual_trading_data)}")
                                     
-                                    # COMPLETE FIELD LISTING for exact mapping
-                                    logger.info(f"🗂️ COMPLETE FIELD LISTING WITH VALUES:")
+                                    # CORRECT FIELD LISTING for exact mapping
+                                    logger.info(f"🗂️ CORRECT FIELD LISTING WITH VALUES:")
                                     for field, value in actual_trading_data.items():
                                         logger.info(f"    {field}: {value} ({type(value).__name__})")
                                     
-                                    # FIELD VALIDATION
-                                    validation_result = self._validate_trading_stats_fields(actual_trading_data)
+                                    # FIELD VALIDATION with CORRECT expected fields
+                                    validation_result = self._validate_trading_stats_fields_correct(actual_trading_data)
                                     
                                     return {
                                         'success': True,
-                                        'data': actual_trading_data,
-                                        'source': 'cielo_trading_stats',
+                                        'data': actual_trading_data,  # CORRECT API response - no modifications
+                                        'source': 'cielo_trading_stats_correct',
                                         'auth_method_used': auth_method,
                                         'api_endpoint': 'trading-stats',
                                         'wallet_address': wallet_address,
                                         'response_timestamp': int(time.time()),
                                         'raw_response': response_data,
                                         'field_validation': validation_result,
-                                        'credit_cost': 30
+                                        'credit_cost': 30,
+                                        'field_extraction_method': 'correct_direct_mapping'
                                     }
                                 else:
                                     logger.warning(f"⚠️ Trading data is not a dict: {type(actual_trading_data)}")
@@ -363,7 +364,7 @@ class ZeusAPIManager:
                             return {
                                 'success': True,
                                 'data': response_data,
-                                'source': 'cielo_trading_stats',
+                                'source': 'cielo_trading_stats_correct',
                                 'auth_method_used': auth_method,
                                 'api_endpoint': 'trading-stats',
                                 'wallet_address': wallet_address,
@@ -385,7 +386,7 @@ class ZeusAPIManager:
                             'error': f'Wallet not found in Cielo Trading Stats database',
                             'error_code': 404,
                             'auth_method_used': auth_method,
-                            'source': 'cielo_trading_stats'
+                            'source': 'cielo_trading_stats_correct'
                         }
                     
                     elif response.status_code in [401, 403]:
@@ -414,7 +415,7 @@ class ZeusAPIManager:
                 'success': False,
                 'error': error_msg,
                 'attempted_auth_methods': len(auth_methods),
-                'source': 'cielo_trading_stats'
+                'source': 'cielo_trading_stats_correct'
             }
             
         except Exception as e:
@@ -424,12 +425,12 @@ class ZeusAPIManager:
             return {
                 'success': False,
                 'error': error_msg,
-                'source': 'cielo_trading_stats'
+                'source': 'cielo_trading_stats_correct'
             }
     
     def get_token_pnl(self, wallet_address: str, limit: int = 5) -> Dict[str, Any]:
         """
-        Get individual token PnL data for trade pattern analysis.
+        Get individual token PnL data with CORRECT structure parsing (data.items[] not data.tokens[]).
         Cost: 5 credits (much cheaper than Trading Stats)
         """
         try:
@@ -437,7 +438,7 @@ class ZeusAPIManager:
                 return {
                     'success': False,
                     'error': 'Cielo Finance API key not configured',
-                    'source': 'cielo_token_pnl'
+                    'source': 'cielo_token_pnl_correct'
                 }
             
             self.api_stats['cielo_token_pnl']['calls'] += 1
@@ -447,6 +448,7 @@ class ZeusAPIManager:
             params = {'limit': limit}
             
             logger.info(f"📊 CIELO TOKEN PNL: {url} (5 credits, limit={limit})")
+            logger.info(f"🔍 Expected structure: data.items[] (CORRECTED)")
             
             # Try different authentication methods
             auth_methods = [
@@ -473,26 +475,29 @@ class ZeusAPIManager:
                         
                         logger.info(f"✅ Cielo Token PnL API success with {auth_method}!")
                         
-                        # Extract token data
-                        tokens_data = response_data.get('data', {}).get('tokens', []) if 'data' in response_data else response_data.get('tokens', [])
+                        # CORRECT structure parsing - data.items[] not data.tokens[]
+                        tokens_data = self._extract_tokens_from_correct_structure(response_data)
                         
-                        logger.info(f"📊 Retrieved {len(tokens_data)} token PnL records")
+                        logger.info(f"📊 CORRECT structure - Retrieved {len(tokens_data)} token PnL records")
                         
                         # Log token structure for analysis
                         if tokens_data and len(tokens_data) > 0:
                             sample_token = tokens_data[0]
-                            logger.info(f"🔍 SAMPLE TOKEN PNL STRUCTURE:")
+                            logger.info(f"🔍 SAMPLE TOKEN PNL STRUCTURE (CORRECT):")
                             for field, value in sample_token.items():
                                 logger.info(f"  {field}: {value} ({type(value).__name__})")
                         
                         return {
                             'success': True,
-                            'data': tokens_data,
-                            'source': 'cielo_token_pnl',
+                            'data': response_data,  # Return full response for structure analysis
+                            'tokens_extracted': tokens_data,  # CORRECT extracted tokens
+                            'source': 'cielo_token_pnl_correct',
                             'auth_method_used': auth_method,
                             'wallet_address': wallet_address,
                             'tokens_count': len(tokens_data),
-                            'credit_cost': 5
+                            'credit_cost': 5,
+                            'structure_used': 'data.items[]',
+                            'extraction_method': 'correct_structure_parsing'
                         }
                     
                     elif response.status_code == 404:
@@ -501,7 +506,7 @@ class ZeusAPIManager:
                             'success': False,
                             'error': 'No token PnL data found',
                             'error_code': 404,
-                            'source': 'cielo_token_pnl'
+                            'source': 'cielo_token_pnl_correct'
                         }
                     
                     elif response.status_code in [401, 403]:
@@ -524,7 +529,7 @@ class ZeusAPIManager:
             return {
                 'success': False,
                 'error': error_msg,
-                'source': 'cielo_token_pnl'
+                'source': 'cielo_token_pnl_correct'
             }
             
         except Exception as e:
@@ -534,26 +539,65 @@ class ZeusAPIManager:
             return {
                 'success': False,
                 'error': error_msg,
-                'source': 'cielo_token_pnl'
+                'source': 'cielo_token_pnl_correct'
             }
     
-    def _validate_trading_stats_fields(self, trading_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate Trading Stats fields and types."""
+    def _extract_tokens_from_correct_structure(self, response_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract tokens from CORRECT Token PnL structure (data.items[] not data.tokens[])."""
+        try:
+            logger.info(f"🔍 Extracting tokens from CORRECT structure...")
+            
+            # CORRECT structure based on actual JSON: data.items[]
+            if isinstance(response_data, dict):
+                if 'data' in response_data:
+                    data_section = response_data['data']
+                    if isinstance(data_section, dict) and 'items' in data_section:
+                        items = data_section['items']
+                        if isinstance(items, list):
+                            logger.info(f"✅ CORRECT structure found: data.items[] with {len(items)} tokens")
+                            return items
+                    elif isinstance(data_section, list):
+                        logger.info(f"✅ Found data as direct array with {len(data_section)} tokens")
+                        return data_section
+                
+                # Fallback checks for other possible structures
+                for key in ['items', 'tokens', 'results']:
+                    if key in response_data and isinstance(response_data[key], list):
+                        logger.info(f"✅ Found tokens in {key} with {len(response_data[key])} items")
+                        return response_data[key]
+            
+            logger.warning(f"❌ No tokens found in CORRECT structure")
+            logger.warning(f"Available keys: {list(response_data.keys()) if isinstance(response_data, dict) else 'not dict'}")
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error extracting tokens from CORRECT structure: {str(e)}")
+            return []
+    
+    def _validate_trading_stats_fields_correct(self, trading_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate Trading Stats fields using CORRECT expected field names from debug results."""
         validation = {
             'valid_fields': [],
             'invalid_fields': [],
             'missing_expected': [],
-            'field_types': {}
+            'field_types': {},
+            'correct_mappings': {}
         }
         
-        # Expected fields for validation
+        # CORRECT expected fields based on debug results
         expected_fields = {
-            'roi': (int, float),
-            'winrate': (int, float),
-            'pnl': (int, float),
-            'unique_tokens': (int,),
-            'avg_hold_time': (int, float),
-            'total_trades': (int,)
+            'pnl': (int, float),                          # CORRECT: total PnL
+            'winrate': (int, float),                      # CORRECT: win rate percentage
+            'swaps_count': (int,),                        # CORRECT: total swaps
+            'buy_count': (int,),                          # CORRECT: buy transactions
+            'sell_count': (int,),                         # CORRECT: sell transactions
+            'total_buy_amount_usd': (int, float),         # CORRECT: total buy volume
+            'total_sell_amount_usd': (int, float),        # CORRECT: total sell volume
+            'average_buy_amount_usd': (int, float),       # CORRECT: average buy size
+            'average_holding_time_sec': (int, float),     # CORRECT: hold time in seconds
+            'consecutive_trading_days': (int,),           # CORRECT: trading days
+            'holding_distribution': (dict,),              # CORRECT: hold time distribution
+            'roi_distribution': (dict,)                   # CORRECT: ROI distribution
         }
         
         # Check each field
@@ -563,6 +607,11 @@ class ZeusAPIManager:
                 if isinstance(value, expected_types):
                     validation['valid_fields'].append(field)
                     validation['field_types'][field] = type(value).__name__
+                    
+                    # Map to Zeus fields
+                    zeus_mapping = self._map_to_zeus_field(field, value)
+                    if zeus_mapping:
+                        validation['correct_mappings'][field] = zeus_mapping
                 else:
                     validation['invalid_fields'].append({
                         'field': field,
@@ -575,6 +624,45 @@ class ZeusAPIManager:
         
         return validation
     
+    def _map_to_zeus_field(self, cielo_field: str, value: Any) -> Optional[Dict[str, Any]]:
+        """Map Cielo field to Zeus field with transformation info."""
+        mappings = {
+            'winrate': {
+                'zeus_field': '7_day_winrate',
+                'transformation': 'direct' if 0 <= value <= 100 else 'multiply_by_100',
+                'value': value
+            },
+            'pnl': {
+                'zeus_field': 'roi_7_day',
+                'transformation': 'calculate_roi_from_pnl_and_buy_amount',
+                'value': value,
+                'note': 'Requires total_buy_amount_usd for ROI calculation'
+            },
+            'average_holding_time_sec': {
+                'zeus_field': 'average_holding_time_minutes',
+                'transformation': 'divide_by_60',
+                'value': value
+            },
+            'holding_distribution': {
+                'zeus_field': 'unique_tokens_30d',
+                'transformation': 'extract_total_tokens',
+                'value': value.get('total_tokens') if isinstance(value, dict) else None
+            },
+            'average_buy_amount_usd': {
+                'zeus_field': 'avg_sol_buy_per_token',
+                'transformation': 'divide_by_sol_price_estimate',
+                'value': value
+            },
+            'buy_count': {
+                'zeus_field': 'avg_buys_per_token',
+                'transformation': 'divide_by_unique_tokens',
+                'value': value,
+                'note': 'Requires unique_tokens for calculation'
+            }
+        }
+        
+        return mappings.get(cielo_field)
+    
     def get_api_status(self) -> Dict[str, Any]:
         """Get detailed API status information with REQUIRED validation."""
         status = {
@@ -583,7 +671,8 @@ class ZeusAPIManager:
             'system_ready': True,
             'wallet_compatible': False,
             'token_analysis_ready': False,
-            'timestamp_accuracy': 'none'
+            'timestamp_accuracy': 'none',
+            'field_extraction_method': 'correct_direct_mapping'
         }
         
         # Check REQUIRED APIs
@@ -616,6 +705,8 @@ class ZeusAPIManager:
         if self.cielo_api_key and self.helius_api_key:
             status['wallet_compatible'] = True
             status['timestamp_accuracy'] = 'high'
+            status['token_pnl_structure'] = 'data.items[] (CORRECT)'
+            status['field_extraction'] = 'direct_mapping (CORRECT)'
         elif self.cielo_api_key:
             status['wallet_compatible'] = True
             status['timestamp_accuracy'] = 'low'
@@ -676,14 +767,14 @@ class ZeusAPIManager:
             }
     
     def test_cielo_api_connection(self, test_wallet: str = "DhDiCRqc4BAojxUDzBonf7KAujejtpUryxDsuqPqGKA9") -> Dict[str, Any]:
-        """Test Cielo API connection with both Trading Stats and Token PnL endpoints."""
+        """Test Cielo API connection with both Trading Stats and CORRECT Token PnL structure."""
         try:
             logger.info(f"🧪 Testing Cielo API connection with wallet: {test_wallet[:8]}...")
             
             # Test Trading Stats (30 credits)
             trading_stats_result = self.get_wallet_trading_stats(test_wallet)
             
-            # Test Token PnL (5 credits)
+            # Test Token PnL with CORRECT structure (5 credits)
             token_pnl_result = self.get_token_pnl(test_wallet, limit=2)
             
             if trading_stats_result.get('success') or token_pnl_result.get('success'):
@@ -696,7 +787,9 @@ class ZeusAPIManager:
                     'token_pnl_working': token_pnl_result.get('success', False),
                     'trading_stats_fields': list(trading_stats_result.get('data', {}).keys()) if trading_stats_result.get('success') else [],
                     'token_pnl_count': token_pnl_result.get('tokens_count', 0) if token_pnl_result.get('success') else 0,
-                    'auth_method': trading_stats_result.get('auth_method_used', 'unknown')
+                    'token_pnl_structure': token_pnl_result.get('structure_used', 'unknown'),
+                    'auth_method': trading_stats_result.get('auth_method_used', 'unknown'),
+                    'field_extraction_method': 'correct_direct_mapping'
                 }
             else:
                 logger.error(f"❌ Cielo API connection test failed")
@@ -726,4 +819,4 @@ class ZeusAPIManager:
             apis.append("Birdeye✅")
         apis.append("RPC✅")
         
-        return f"ZeusAPIManager({', '.join(apis)})"
+        return f"ZeusAPIManager({', '.join(apis)}, CORRECT Token PnL: data.items[])"
