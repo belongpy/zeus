@@ -128,15 +128,23 @@ class ZeusAPIManager:
                             logger.info(f"✅ Cielo Trading Stats API success with {auth_method}!")
                             logger.info(f"Response contains keys: {list(response_data.keys()) if isinstance(response_data, dict) else 'Non-dict response'}")
                             
-                            # FIXED: Return complete response structure for proper extraction
+                            # FIXED: Extract the actual trading data from the nested structure
+                            # Cielo returns {status: "ok", message: "", data: {actual_trading_stats}}
+                            actual_trading_data = response_data.get('data', {}) if isinstance(response_data, dict) else {}
+                            
+                            if actual_trading_data:
+                                logger.info(f"Extracted trading data keys: {list(actual_trading_data.keys())}")
+                            
+                            # FIXED: Return the actual trading stats, not the wrapper
                             return {
                                 'success': True,
-                                'data': response_data,  # Complete Cielo Trading Stats response
+                                'data': actual_trading_data,  # This is the actual trading stats
                                 'source': 'cielo_trading_stats',
                                 'auth_method_used': auth_method,
                                 'api_endpoint': 'trading-stats',
                                 'wallet_address': wallet_address,
-                                'response_timestamp': int(time.time())
+                                'response_timestamp': int(time.time()),
+                                'raw_response': response_data  # Keep original for debugging
                             }
                             
                         except ValueError as json_error:
@@ -473,6 +481,53 @@ class ZeusAPIManager:
             }
         
         return perf_stats
+    
+    def test_cielo_api_connection(self, test_wallet: str = "DhDiCRqc4BAojxUDzBonf7KAujejtpUryxDsuqPqGKA9") -> Dict[str, Any]:
+        """
+        Test Cielo API connection with a known wallet address.
+        Used for debugging and API key validation.
+        """
+        try:
+            logger.info(f"🧪 Testing Cielo API connection with wallet: {test_wallet[:8]}...")
+            
+            result = self.get_wallet_trading_stats(test_wallet)
+            
+            if result.get('success'):
+                logger.info("✅ Cielo API connection test successful!")
+                
+                # Log the structure for debugging
+                data = result.get('data', {})
+                if isinstance(data, dict):
+                    logger.info(f"Response contains {len(data)} fields: {list(data.keys())}")
+                    
+                    # Log sample values (first few fields)
+                    sample_fields = list(data.keys())[:5]
+                    for field in sample_fields:
+                        value = data.get(field)
+                        value_str = str(value)[:100] if value is not None else "None"
+                        logger.info(f"  {field}: {type(value).__name__} = {value_str}")
+                
+                return {
+                    'connection_test': 'success',
+                    'api_working': True,
+                    'response_fields': list(data.keys()) if isinstance(data, dict) else [],
+                    'auth_method': result.get('auth_method_used', 'unknown')
+                }
+            else:
+                logger.error(f"❌ Cielo API connection test failed: {result.get('error', 'Unknown error')}")
+                return {
+                    'connection_test': 'failed',
+                    'api_working': False,
+                    'error': result.get('error', 'Unknown error')
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Cielo API connection test error: {str(e)}")
+            return {
+                'connection_test': 'error',
+                'api_working': False,
+                'error': str(e)
+            }
     
     def test_cielo_api_connection(self, test_wallet: str = "DhDiCRqc4BAojxUDzBonf7KAujejtpUryxDsuqPqGKA9") -> Dict[str, Any]:
         """

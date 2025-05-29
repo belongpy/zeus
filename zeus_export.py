@@ -176,12 +176,13 @@ def _extract_real_cielo_trading_stats(wallet_address: str, wallet_data: Dict[str
             
             # Handle different possible data structures from API manager
             if 'data' in wallet_data and isinstance(wallet_data['data'], dict):
+                # API manager now returns the actual trading stats directly in 'data'
                 cielo_data = wallet_data['data']
                 logger.info(f"  Found Cielo data in 'data' key: {list(cielo_data.keys())}")
-            elif wallet_data.get('source') == 'cielo_finance':
-                # Direct Cielo data
-                cielo_data = wallet_data
-                logger.info(f"  Using wallet_data as Cielo data")
+            elif wallet_data.get('source') in ['cielo_finance_real', 'cielo_trading_stats']:
+                # Direct Cielo data from our API manager
+                cielo_data = wallet_data.get('data', {})
+                logger.info(f"  Using wallet_data.data for Cielo")
             else:
                 # Try to find the actual data
                 for key in ['trading_stats', 'stats', 'response_data']:
