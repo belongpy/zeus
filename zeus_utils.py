@@ -1,14 +1,11 @@
 """
-Zeus Utilities - Enhanced for Token PnL & Direct Field Extraction
-Collection of utility functions used throughout Zeus system
-
-NEW FEATURES:
-- Token PnL analysis utilities
-- Direct field extraction helpers
-- Pattern recognition utilities
-- Smart TP/SL calculation functions
-- Enhanced validation for new data types
-- Cost tracking and estimation utilities
+Zeus Utilities - FIXED with Safe Validation and Type Checking
+CRITICAL FIXES:
+- Fixed all type comparison errors in validation functions
+- Added proper type guards for all operations
+- Safe handling of complex data types (dicts, lists)
+- Defensive programming with try-catch blocks
+- Preserved all existing utility functionality
 """
 
 import os
@@ -25,12 +22,12 @@ import base58
 logger = logging.getLogger("zeus.utils")
 
 class ZeusUtils:
-    """Collection of utility functions for Zeus system with Token PnL and direct field features."""
+    """Collection of utility functions for Zeus system with SAFE validation and Token PnL features."""
     
     @staticmethod
     def validate_solana_address(address: str) -> Dict[str, Any]:
         """
-        Validate Solana wallet/token address.
+        Validate Solana wallet/token address with SAFE type checking.
         
         Args:
             address: Address to validate
@@ -120,10 +117,13 @@ class ZeusUtils:
             Formatted percentage string
         """
         try:
-            if value >= 0:
-                return f"+{value:.{decimals}f}%"
+            if isinstance(value, (int, float)):
+                if value >= 0:
+                    return f"+{value:.{decimals}f}%"
+                else:
+                    return f"{value:.{decimals}f}%"
             else:
-                return f"{value:.{decimals}f}%"
+                return "0.0%"
         except:
             return "0.0%"
     
@@ -140,12 +140,15 @@ class ZeusUtils:
             Formatted SOL string
         """
         try:
-            if amount >= 1000:
-                return f"{amount/1000:.1f}K SOL"
-            elif amount >= 1:
-                return f"{amount:.{decimals}f} SOL"
+            if isinstance(amount, (int, float)):
+                if amount >= 1000:
+                    return f"{amount/1000:.1f}K SOL"
+                elif amount >= 1:
+                    return f"{amount:.{decimals}f} SOL"
+                else:
+                    return f"{amount:.{min(6, decimals)}f} SOL"
             else:
-                return f"{amount:.{min(6, decimals)}f} SOL"
+                return "0 SOL"
         except:
             return "0 SOL"
     
@@ -162,6 +165,9 @@ class ZeusUtils:
             Formatted duration string
         """
         try:
+            if not isinstance(seconds, (int, float)) or seconds < 0:
+                return "0s"
+                
             if seconds < 60:
                 return f"{seconds:.1f}s"
             elif seconds < 3600:
@@ -185,7 +191,7 @@ class ZeusUtils:
     @staticmethod
     def calculate_roi_percentage(initial_value: float, final_value: float) -> float:
         """
-        Calculate ROI percentage with enhanced precision.
+        Calculate ROI percentage with enhanced precision and SAFE type checking.
         
         Args:
             initial_value: Initial investment value
@@ -195,6 +201,8 @@ class ZeusUtils:
             ROI percentage
         """
         try:
+            if not isinstance(initial_value, (int, float)) or not isinstance(final_value, (int, float)):
+                return 0.0
             if initial_value <= 0:
                 return 0.0
             return round(((final_value / initial_value) - 1) * 100, 2)
@@ -204,7 +212,7 @@ class ZeusUtils:
     @staticmethod
     def identify_trader_pattern(metrics: Dict[str, Any], use_updated_thresholds: bool = True) -> str:
         """
-        Identify trader pattern based on metrics with updated thresholds.
+        Identify trader pattern based on metrics with updated thresholds and SAFE type checking.
         
         Args:
             metrics: Trading metrics
@@ -214,11 +222,26 @@ class ZeusUtils:
             Identified pattern
         """
         try:
+            if not isinstance(metrics, dict):
+                return 'analysis_error'
+                
             avg_hold_time_hours = metrics.get('avg_hold_time_hours', 24)
             avg_roi = metrics.get('avg_roi', 0)
             moonshot_rate = metrics.get('moonshot_rate', 0)
             win_rate = metrics.get('win_rate', 50)
             total_trades = metrics.get('total_trades', 0)
+            
+            # SAFE type checking for all values
+            if not isinstance(avg_hold_time_hours, (int, float)):
+                avg_hold_time_hours = 24
+            if not isinstance(avg_roi, (int, float)):
+                avg_roi = 0
+            if not isinstance(moonshot_rate, (int, float)):
+                moonshot_rate = 0
+            if not isinstance(win_rate, (int, float)):
+                win_rate = 50
+            if not isinstance(total_trades, (int, float)):
+                total_trades = 0
             
             # Updated thresholds
             if use_updated_thresholds:
@@ -249,7 +272,7 @@ class ZeusUtils:
     @staticmethod
     def calculate_smart_tp_sl(pattern: str, actual_performance: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        Calculate smart TP/SL levels based on trader pattern and actual performance.
+        Calculate smart TP/SL levels based on trader pattern and actual performance with SAFE validation.
         
         Args:
             pattern: Identified trader pattern
@@ -281,27 +304,45 @@ class ZeusUtils:
             
             base_recommendation = pattern_defaults.get(pattern, pattern_defaults['consistent_trader'])
             
-            # Enhance with actual performance data if available
-            if actual_performance and actual_performance.get('based_on_actual_exits'):
-                actual_tp1 = actual_performance.get('avg_tp1', base_recommendation['tp1'])
-                actual_tp2 = actual_performance.get('avg_tp2', base_recommendation['tp2'])
-                actual_sl = actual_performance.get('avg_stop_loss', base_recommendation['stop_loss'])
-                
-                # Apply safety buffers
-                safety_tp1 = int(actual_tp1 * 1.1)  # 10% buffer
-                safety_tp2 = int(actual_tp2 * 1.1)
-                safety_tp3 = int(actual_tp2 * 2.0)  # Double TP2 for TP3
-                safety_sl = int(actual_sl * 0.9)    # 10% tighter SL
-                
-                return {
-                    'tp1': safety_tp1,
-                    'tp2': safety_tp2,
-                    'tp3': safety_tp3,
-                    'stop_loss': safety_sl,
-                    'reasoning': f'{pattern} pattern with actual exit data + 10% safety buffer',
-                    'based_on_actual_exits': True,
-                    'original_performance': actual_performance
-                }
+            # SAFE enhancement with actual performance data
+            if actual_performance and isinstance(actual_performance, dict) and actual_performance.get('based_on_actual_exits'):
+                try:
+                    actual_tp1 = actual_performance.get('avg_tp1', base_recommendation['tp1'])
+                    actual_tp2 = actual_performance.get('avg_tp2', base_recommendation['tp2'])
+                    actual_sl = actual_performance.get('avg_stop_loss', base_recommendation['stop_loss'])
+                    
+                    # SAFE type checking and range validation
+                    if isinstance(actual_tp1, (int, float)) and 10 <= actual_tp1 <= 2000:
+                        safety_tp1 = int(actual_tp1 * 1.1)  # 10% buffer
+                    else:
+                        safety_tp1 = base_recommendation['tp1']
+                    
+                    if isinstance(actual_tp2, (int, float)) and 20 <= actual_tp2 <= 5000:
+                        safety_tp2 = int(actual_tp2 * 1.1)
+                    else:
+                        safety_tp2 = base_recommendation['tp2']
+                    
+                    if isinstance(actual_tp2, (int, float)):
+                        safety_tp3 = int(max(safety_tp2 * 2.0, base_recommendation['tp3']))
+                    else:
+                        safety_tp3 = base_recommendation['tp3']
+                    
+                    if isinstance(actual_sl, (int, float)) and -90 <= actual_sl <= -5:
+                        safety_sl = int(actual_sl * 0.9)  # 10% tighter SL
+                    else:
+                        safety_sl = base_recommendation['stop_loss']
+                    
+                    return {
+                        'tp1': safety_tp1,
+                        'tp2': safety_tp2,
+                        'tp3': safety_tp3,
+                        'stop_loss': safety_sl,
+                        'reasoning': f'{pattern} pattern with actual exit data + 10% safety buffer',
+                        'based_on_actual_exits': True,
+                        'original_performance': actual_performance
+                    }
+                except Exception as perf_error:
+                    logger.debug(f"Error processing actual performance data: {str(perf_error)}")
             
             return {
                 **base_recommendation,
@@ -321,18 +362,26 @@ class ZeusUtils:
     def validate_cielo_field_data(data: Dict[str, Any], field_name: str, 
                                 expected_type: type, expected_range: Tuple[float, float] = None) -> Dict[str, Any]:
         """
-        Validate Cielo API field data with enhanced validation.
+        SAFELY validate Cielo API field data with enhanced validation and proper type checking.
+        CRITICAL FIX: No more type comparison errors!
         
         Args:
             data: Cielo API response data
             field_name: Field name to validate
             expected_type: Expected data type
-            expected_range: Expected value range (min, max)
+            expected_range: Expected value range (min, max) - only applied to numeric types
             
         Returns:
             Validation result
         """
         try:
+            if not isinstance(data, dict):
+                return {
+                    'valid': False,
+                    'error': f'Data is not a dictionary, got {type(data).__name__}',
+                    'field_name': field_name
+                }
+            
             if field_name not in data:
                 return {
                     'valid': False,
@@ -342,26 +391,31 @@ class ZeusUtils:
             
             value = data[field_name]
             
-            # Type validation
+            # SAFE type validation
             if not isinstance(value, expected_type):
                 return {
                     'valid': False,
                     'error': f'Field {field_name} has type {type(value).__name__}, expected {expected_type.__name__}',
                     'field_name': field_name,
-                    'actual_value': value
+                    'actual_value': str(value)[:100]  # Truncate long values
                 }
             
-            # Range validation
-            if expected_range and isinstance(value, (int, float)):
-                min_val, max_val = expected_range
-                if not (min_val <= value <= max_val):
-                    return {
-                        'valid': False,
-                        'error': f'Field {field_name} value {value} outside expected range [{min_val}, {max_val}]',
-                        'field_name': field_name,
-                        'actual_value': value,
-                        'expected_range': expected_range
-                    }
+            # SAFE range validation - ONLY for numeric types
+            if expected_range and isinstance(value, (int, float)) and isinstance(expected_type, type) and issubclass(expected_type, (int, float)):
+                try:
+                    min_val, max_val = expected_range
+                    if isinstance(min_val, (int, float)) and isinstance(max_val, (int, float)):
+                        if not (min_val <= value <= max_val):
+                            return {
+                                'valid': False,
+                                'error': f'Field {field_name} value {value} outside expected range [{min_val}, {max_val}]',
+                                'field_name': field_name,
+                                'actual_value': value,
+                                'expected_range': expected_range
+                            }
+                except Exception as range_error:
+                    logger.debug(f"Range validation error for {field_name}: {str(range_error)}")
+                    # Continue without range validation if there's an error
             
             return {
                 'valid': True,
@@ -382,7 +436,7 @@ class ZeusUtils:
                                  default_value: Any = None, 
                                  validation_func: callable = None) -> Dict[str, Any]:
         """
-        Extract direct field value from Cielo API response with multiple field name options.
+        SAFELY extract direct field value from Cielo API response with multiple field name options.
         
         Args:
             data: API response data
@@ -394,16 +448,33 @@ class ZeusUtils:
             Extraction result
         """
         try:
+            if not isinstance(data, dict):
+                return {
+                    'success': False,
+                    'field_names_tried': field_names,
+                    'value': default_value,
+                    'error': f'Data is not a dictionary, got {type(data).__name__}'
+                }
+            
+            if not isinstance(field_names, list):
+                return {
+                    'success': False,
+                    'field_names_tried': [],
+                    'value': default_value,
+                    'error': 'field_names must be a list'
+                }
+            
             for field_name in field_names:
-                if field_name in data and data[field_name] is not None:
+                if isinstance(field_name, str) and field_name in data and data[field_name] is not None:
                     value = data[field_name]
                     
-                    # Apply validation if provided
-                    if validation_func:
+                    # SAFE validation if provided
+                    if validation_func and callable(validation_func):
                         try:
                             if not validation_func(value):
                                 continue
-                        except:
+                        except Exception as val_error:
+                            logger.debug(f"Validation function error for {field_name}: {str(val_error)}")
                             continue
                     
                     return {
@@ -432,7 +503,7 @@ class ZeusUtils:
     @staticmethod
     def calculate_api_cost_estimate(wallet_count: int, features_enabled: Dict[str, bool]) -> Dict[str, Any]:
         """
-        Calculate estimated API costs based on enabled features.
+        Calculate estimated API costs based on enabled features with SAFE validation.
         
         Args:
             wallet_count: Number of wallets to analyze
@@ -442,6 +513,13 @@ class ZeusUtils:
             Cost estimate breakdown
         """
         try:
+            # SAFE input validation
+            if not isinstance(wallet_count, int) or wallet_count < 0:
+                wallet_count = 0
+            
+            if not isinstance(features_enabled, dict):
+                features_enabled = {}
+            
             # Default API costs
             api_costs = {
                 'cielo_trading_stats': 30,
@@ -504,7 +582,7 @@ class ZeusUtils:
     @staticmethod
     def safe_divide(numerator: float, denominator: float, default: float = 0.0) -> float:
         """
-        Safe division with default value.
+        Safe division with default value and SAFE type checking.
         
         Args:
             numerator: Numerator
@@ -515,6 +593,8 @@ class ZeusUtils:
             Division result or default
         """
         try:
+            if not isinstance(numerator, (int, float)) or not isinstance(denominator, (int, float)):
+                return default
             if denominator == 0:
                 return default
             return numerator / denominator
@@ -524,7 +604,7 @@ class ZeusUtils:
     @staticmethod
     def timestamp_to_datetime(timestamp: Union[int, float]) -> datetime:
         """
-        Convert timestamp to datetime object.
+        Convert timestamp to datetime object with SAFE type checking.
         
         Args:
             timestamp: Unix timestamp
@@ -533,14 +613,17 @@ class ZeusUtils:
             datetime object
         """
         try:
-            return datetime.fromtimestamp(timestamp)
+            if isinstance(timestamp, (int, float)) and timestamp > 0:
+                return datetime.fromtimestamp(timestamp)
+            else:
+                return datetime.now()
         except:
             return datetime.now()
     
     @staticmethod
     def datetime_to_timestamp(dt: datetime) -> int:
         """
-        Convert datetime to timestamp.
+        Convert datetime to timestamp with SAFE type checking.
         
         Args:
             dt: datetime object
@@ -549,14 +632,17 @@ class ZeusUtils:
             Unix timestamp
         """
         try:
-            return int(dt.timestamp())
+            if isinstance(dt, datetime):
+                return int(dt.timestamp())
+            else:
+                return int(time.time())
         except:
             return int(time.time())
     
     @staticmethod
     def get_time_ago_string(timestamp: Union[int, float], use_updated_format: bool = True) -> str:
         """
-        Get human-readable time ago string with updated precision.
+        Get human-readable time ago string with updated precision and SAFE type checking.
         
         Args:
             timestamp: Unix timestamp
@@ -566,6 +652,9 @@ class ZeusUtils:
             Time ago string
         """
         try:
+            if not isinstance(timestamp, (int, float)) or timestamp <= 0:
+                return "unknown"
+                
             dt = ZeusUtils.timestamp_to_datetime(timestamp)
             now = datetime.now()
             diff = now - dt
@@ -592,7 +681,7 @@ class ZeusUtils:
     @staticmethod
     def load_wallet_list(file_path: str) -> List[str]:
         """
-        Load wallet addresses from file.
+        Load wallet addresses from file with SAFE validation.
         
         Args:
             file_path: Path to wallet list file
@@ -602,25 +691,32 @@ class ZeusUtils:
         """
         wallets = []
         
-        if not os.path.exists(file_path):
-            logger.warning(f"Wallet file not found: {file_path}")
-            return wallets
-        
         try:
+            if not isinstance(file_path, str) or not file_path.strip():
+                logger.warning("Invalid file path provided")
+                return wallets
+                
+            if not os.path.exists(file_path):
+                logger.warning(f"Wallet file not found: {file_path}")
+                return wallets
+            
             with open(file_path, 'r', encoding='utf-8') as f:
                 for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-                    
-                    # Skip empty lines and comments
-                    if not line or line.startswith('#'):
-                        continue
-                    
-                    # Validate address
-                    validation = ZeusUtils.validate_solana_address(line)
-                    if validation['valid']:
-                        wallets.append(validation['address'])
-                    else:
-                        logger.warning(f"Line {line_num}: Invalid address '{line}' - {validation['error']}")
+                    try:
+                        line = line.strip()
+                        
+                        # Skip empty lines and comments
+                        if not line or line.startswith('#'):
+                            continue
+                        
+                        # Validate address
+                        validation = ZeusUtils.validate_solana_address(line)
+                        if validation['valid']:
+                            wallets.append(validation['address'])
+                        else:
+                            logger.warning(f"Line {line_num}: Invalid address '{line}' - {validation['error']}")
+                    except Exception as line_error:
+                        logger.warning(f"Line {line_num}: Error processing line - {str(line_error)}")
             
             logger.info(f"Loaded {len(wallets)} valid wallet addresses from {file_path}")
             
@@ -632,7 +728,7 @@ class ZeusUtils:
     @staticmethod
     def save_wallet_list(wallets: List[str], file_path: str) -> bool:
         """
-        Save wallet addresses to file.
+        Save wallet addresses to file with SAFE validation.
         
         Args:
             wallets: List of wallet addresses
@@ -642,17 +738,28 @@ class ZeusUtils:
             bool: True if successful
         """
         try:
+            if not isinstance(wallets, list):
+                logger.error("Wallets must be a list")
+                return False
+                
+            if not isinstance(file_path, str) or not file_path.strip():
+                logger.error("Invalid file path")
+                return False
+            
             # Ensure directory exists
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            directory = os.path.dirname(file_path)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
             
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write("# Zeus Wallet List - Token PnL Analysis Enabled\n")
                 f.write(f"# Generated: {datetime.now().isoformat()}\n")
                 f.write(f"# Total wallets: {len(wallets)}\n")
-                f.write(f"# Features: Direct field extraction, Smart TP/SL\n\n")
+                f.write(f"# Features: Direct field extraction, Smart TP/SL, SAFE validation\n\n")
                 
                 for wallet in wallets:
-                    f.write(f"{wallet}\n")
+                    if isinstance(wallet, str) and wallet.strip():
+                        f.write(f"{wallet.strip()}\n")
             
             logger.info(f"Saved {len(wallets)} wallets to {file_path}")
             return True
@@ -664,7 +771,7 @@ class ZeusUtils:
     @staticmethod
     def ensure_output_directory(file_path: str) -> str:
         """
-        Ensure output directory exists and return full path.
+        Ensure output directory exists and return full path with SAFE validation.
         
         Args:
             file_path: File path
@@ -673,6 +780,9 @@ class ZeusUtils:
             Full file path with ensured directory
         """
         try:
+            if not isinstance(file_path, str):
+                file_path = str(file_path) if file_path else "output.txt"
+            
             # If no directory specified, use outputs folder
             if not os.path.dirname(file_path):
                 output_dir = os.path.join(os.getcwd(), "outputs")
@@ -703,17 +813,26 @@ class ZeusUtils:
         Returns:
             Filename with timestamp and features
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        if include_features:
-            return f"{base_name}_token_pnl_smart_tp_sl_{timestamp}.{extension}"
-        else:
-            return f"{base_name}_{timestamp}.{extension}"
+        try:
+            if not isinstance(base_name, str):
+                base_name = "zeus_analysis"
+            if not isinstance(extension, str):
+                extension = "csv"
+                
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            if include_features:
+                return f"{base_name}_token_pnl_smart_tp_sl_safe_{timestamp}.{extension}"
+            else:
+                return f"{base_name}_{timestamp}.{extension}"
+        except Exception as e:
+            logger.error(f"Error generating filename: {str(e)}")
+            return f"zeus_analysis_{int(time.time())}.csv"
     
     @staticmethod
     def hash_wallet_address(address: str) -> str:
         """
-        Generate hash of wallet address for privacy.
+        Generate hash of wallet address for privacy with SAFE validation.
         
         Args:
             address: Wallet address
@@ -722,15 +841,18 @@ class ZeusUtils:
             SHA256 hash (first 16 characters)
         """
         try:
-            hash_obj = hashlib.sha256(address.encode())
-            return hash_obj.hexdigest()[:16]
+            if isinstance(address, str) and address.strip():
+                hash_obj = hashlib.sha256(address.encode())
+                return hash_obj.hexdigest()[:16]
+            else:
+                return "unknown_hash"
         except:
             return "unknown_hash"
     
     @staticmethod
     def sanitize_filename(filename: str) -> str:
         """
-        Sanitize filename for filesystem compatibility.
+        Sanitize filename for filesystem compatibility with SAFE validation.
         
         Args:
             filename: Original filename
@@ -738,20 +860,27 @@ class ZeusUtils:
         Returns:
             Sanitized filename
         """
-        # Remove invalid characters
-        sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
-        
-        # Limit length
-        if len(sanitized) > 200:
-            name, ext = os.path.splitext(sanitized)
-            sanitized = name[:200-len(ext)] + ext
-        
-        return sanitized
+        try:
+            if not isinstance(filename, str):
+                filename = str(filename) if filename else "sanitized_file"
+            
+            # Remove invalid characters
+            sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
+            
+            # Limit length
+            if len(sanitized) > 200:
+                name, ext = os.path.splitext(sanitized)
+                sanitized = name[:200-len(ext)] + ext
+            
+            return sanitized
+        except Exception as e:
+            logger.error(f"Error sanitizing filename: {str(e)}")
+            return "sanitized_file"
     
     @staticmethod
     def calculate_statistics(values: List[float]) -> Dict[str, float]:
         """
-        Calculate basic statistics for a list of values with enhanced precision.
+        Calculate basic statistics for a list of values with enhanced precision and SAFE validation.
         
         Args:
             values: List of numeric values
@@ -760,7 +889,24 @@ class ZeusUtils:
             Dict with statistical measures
         """
         try:
-            if not values:
+            if not isinstance(values, list) or not values:
+                return {
+                    'count': 0,
+                    'mean': 0,
+                    'median': 0,
+                    'std': 0,
+                    'min': 0,
+                    'max': 0,
+                    'sum': 0
+                }
+            
+            # SAFE filtering of numeric values
+            numeric_values = []
+            for val in values:
+                if isinstance(val, (int, float)) and not (isinstance(val, float) and (val != val)):  # Check for NaN
+                    numeric_values.append(float(val))
+            
+            if not numeric_values:
                 return {
                     'count': 0,
                     'mean': 0,
@@ -773,16 +919,16 @@ class ZeusUtils:
             
             import statistics
             
-            sorted_values = sorted(values)
+            sorted_values = sorted(numeric_values)
             
             return {
-                'count': len(values),
-                'mean': round(statistics.mean(values), 2),
-                'median': round(statistics.median(values), 2),
-                'std': round(statistics.stdev(values), 2) if len(values) > 1 else 0,
-                'min': round(min(values), 2),
-                'max': round(max(values), 2),
-                'sum': round(sum(values), 2),
+                'count': len(numeric_values),
+                'mean': round(statistics.mean(numeric_values), 2),
+                'median': round(statistics.median(numeric_values), 2),
+                'std': round(statistics.stdev(numeric_values), 2) if len(numeric_values) > 1 else 0,
+                'min': round(min(numeric_values), 2),
+                'max': round(max(numeric_values), 2),
+                'sum': round(sum(numeric_values), 2),
                 'q1': round(sorted_values[len(sorted_values)//4], 2) if len(sorted_values) > 3 else sorted_values[0],
                 'q3': round(sorted_values[3*len(sorted_values)//4], 2) if len(sorted_values) > 3 else sorted_values[-1]
             }
@@ -794,7 +940,7 @@ class ZeusUtils:
     @staticmethod
     def create_feature_status_summary(features_config: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Create summary of enabled features with their status.
+        Create summary of enabled features with their status and SAFE validation.
         
         Args:
             features_config: Features configuration
@@ -803,12 +949,15 @@ class ZeusUtils:
             Feature status summary
         """
         try:
+            if not isinstance(features_config, dict):
+                features_config = {}
+                
             feature_descriptions = {
                 'enable_token_pnl_analysis': 'Token PnL Analysis (5 credits per wallet)',
                 'enable_smart_tp_sl': 'Smart TP/SL Recommendations',
                 'enable_direct_field_extraction': 'Direct Field Extraction (no scaling)',
                 'enable_pattern_based_strategies': 'Pattern-based Strategies',
-                'enable_field_validation': 'Field Validation',
+                'enable_field_validation': 'SAFE Field Validation',
                 'enable_enhanced_transactions': 'Enhanced Transaction Analysis',
                 'enable_price_analysis': 'Price Analysis',
                 'enable_market_cap_analysis': 'Market Cap Analysis',
@@ -841,11 +990,11 @@ class ZeusUtils:
             }
 
 class PerformanceTimer:
-    """Context manager for timing operations with enhanced logging."""
+    """Context manager for timing operations with enhanced logging and SAFE validation."""
     
     def __init__(self, operation_name: str = "Operation", log_threshold_seconds: float = 1.0):
-        self.operation_name = operation_name
-        self.log_threshold_seconds = log_threshold_seconds
+        self.operation_name = str(operation_name) if operation_name else "Operation"
+        self.log_threshold_seconds = float(log_threshold_seconds) if isinstance(log_threshold_seconds, (int, float)) else 1.0
         self.start_time = None
         self.end_time = None
     
@@ -875,12 +1024,12 @@ class PerformanceTimer:
         return 0.0
 
 class RateLimiter:
-    """Enhanced rate limiter for API calls with cost tracking."""
+    """Enhanced rate limiter for API calls with cost tracking and SAFE validation."""
     
     def __init__(self, calls_per_second: float = 10.0, cost_per_call: float = 0.0):
-        self.calls_per_second = calls_per_second
-        self.cost_per_call = cost_per_call
-        self.min_interval = 1.0 / calls_per_second if calls_per_second > 0 else 0
+        self.calls_per_second = max(0.1, float(calls_per_second)) if isinstance(calls_per_second, (int, float)) else 10.0
+        self.cost_per_call = max(0.0, float(cost_per_call)) if isinstance(cost_per_call, (int, float)) else 0.0
+        self.min_interval = 1.0 / self.calls_per_second if self.calls_per_second > 0 else 0
         self.last_call_time = 0
         self.total_calls = 0
         self.total_cost = 0.0
@@ -911,50 +1060,68 @@ class RateLimiter:
         }
 
 class DataCache:
-    """Enhanced in-memory cache with TTL and size limits."""
+    """Enhanced in-memory cache with TTL and size limits and SAFE validation."""
     
     def __init__(self, default_ttl: int = 300, max_size: int = 1000):
+        self.default_ttl = max(1, int(default_ttl)) if isinstance(default_ttl, (int, float)) else 300
+        self.max_size = max(1, int(max_size)) if isinstance(max_size, (int, float)) else 1000
         self.cache = {}
-        self.default_ttl = default_ttl
-        self.max_size = max_size
         self.access_times = {}
     
     def get(self, key: str) -> Optional[Any]:
-        """Get cached value if not expired."""
-        if key not in self.cache:
+        """Get cached value if not expired with SAFE validation."""
+        try:
+            if not isinstance(key, str) or key not in self.cache:
+                return None
+            
+            data, expiry = self.cache[key]
+            
+            if time.time() > expiry:
+                del self.cache[key]
+                if key in self.access_times:
+                    del self.access_times[key]
+                return None
+            
+            # Update access time for LRU
+            self.access_times[key] = time.time()
+            return data
+        except Exception as e:
+            logger.debug(f"Cache get error for key {key}: {str(e)}")
             return None
-        
-        data, expiry = self.cache[key]
-        
-        if time.time() > expiry:
-            del self.cache[key]
-            if key in self.access_times:
-                del self.access_times[key]
-            return None
-        
-        # Update access time for LRU
-        self.access_times[key] = time.time()
-        return data
     
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
-        """Set cached value with TTL and size management."""
-        # Enforce size limit
-        if len(self.cache) >= self.max_size:
-            self._evict_oldest()
-        
-        ttl = ttl or self.default_ttl
-        expiry = time.time() + ttl
-        self.cache[key] = (value, expiry)
-        self.access_times[key] = time.time()
+        """Set cached value with TTL and size management with SAFE validation."""
+        try:
+            if not isinstance(key, str):
+                return
+            
+            # Enforce size limit
+            if len(self.cache) >= self.max_size:
+                self._evict_oldest()
+            
+            ttl = ttl or self.default_ttl
+            if not isinstance(ttl, (int, float)) or ttl <= 0:
+                ttl = self.default_ttl
+            
+            expiry = time.time() + ttl
+            self.cache[key] = (value, expiry)
+            self.access_times[key] = time.time()
+        except Exception as e:
+            logger.debug(f"Cache set error for key {key}: {str(e)}")
     
     def _evict_oldest(self) -> None:
         """Evict oldest accessed item."""
-        if not self.access_times:
-            return
-        
-        oldest_key = min(self.access_times.keys(), key=lambda k: self.access_times[k])
-        del self.cache[oldest_key]
-        del self.access_times[oldest_key]
+        try:
+            if not self.access_times:
+                return
+            
+            oldest_key = min(self.access_times.keys(), key=lambda k: self.access_times[k])
+            if oldest_key in self.cache:
+                del self.cache[oldest_key]
+            if oldest_key in self.access_times:
+                del self.access_times[oldest_key]
+        except Exception as e:
+            logger.debug(f"Cache eviction error: {str(e)}")
     
     def clear(self) -> None:
         """Clear all cached values."""
@@ -978,7 +1145,7 @@ class DataCache:
 def setup_zeus_logging(level: str = "INFO", log_file: str = "zeus.log", 
                       enable_enhanced_logging: bool = True) -> None:
     """
-    Setup Zeus logging configuration with enhanced features.
+    Setup Zeus logging configuration with enhanced features and SAFE validation.
     
     Args:
         level: Logging level
@@ -987,46 +1154,55 @@ def setup_zeus_logging(level: str = "INFO", log_file: str = "zeus.log",
     """
     import sys
     
-    # Create formatter
-    if enable_enhanced_logging:
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
-        )
-    else:
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-    
-    # Setup file handler with rotation
-    if enable_enhanced_logging:
-        from logging.handlers import RotatingFileHandler
-        file_handler = RotatingFileHandler(
-            log_file, maxBytes=10*1024*1024, backupCount=3, encoding='utf-8'
-        )
-    else:
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
-    
-    file_handler.setFormatter(formatter)
-    
-    # Setup console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
-    
-    # Configure root logger
-    root_logger = logging.getLogger("zeus")
-    root_logger.setLevel(getattr(logging, level.upper(), logging.INFO))
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
-    
-    # Prevent duplicate logs
-    root_logger.propagate = False
-    
-    if enable_enhanced_logging:
-        logger.info("Enhanced logging enabled with rotation and detailed formatting")
+    try:
+        # SAFE parameter validation
+        if not isinstance(level, str):
+            level = "INFO"
+        if not isinstance(log_file, str):
+            log_file = "zeus.log"
+        
+        # Create formatter
+        if enable_enhanced_logging:
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+            )
+        else:
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+        
+        # Setup file handler with rotation
+        if enable_enhanced_logging:
+            from logging.handlers import RotatingFileHandler
+            file_handler = RotatingFileHandler(
+                log_file, maxBytes=10*1024*1024, backupCount=3, encoding='utf-8'
+            )
+        else:
+            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        
+        file_handler.setFormatter(formatter)
+        
+        # Setup console handler
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+        
+        # Configure root logger
+        root_logger = logging.getLogger("zeus")
+        root_logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+        root_logger.addHandler(file_handler)
+        root_logger.addHandler(console_handler)
+        
+        # Prevent duplicate logs
+        root_logger.propagate = False
+        
+        if enable_enhanced_logging:
+            logger.info("Enhanced logging enabled with rotation, detailed formatting, and SAFE validation")
+    except Exception as e:
+        print(f"Error setting up logging: {str(e)}")
 
 def create_sample_wallet_file(file_path: str = "wallets.txt") -> bool:
     """
-    Create sample wallet file with example addresses and new feature info.
+    Create sample wallet file with example addresses and new feature info with SAFE validation.
     
     Args:
         file_path: Path to create sample file
@@ -1035,8 +1211,11 @@ def create_sample_wallet_file(file_path: str = "wallets.txt") -> bool:
         bool: True if successful
     """
     try:
+        if not isinstance(file_path, str):
+            file_path = "wallets.txt"
+            
         sample_wallets = [
-            "# Zeus Sample Wallet List - Token PnL Analysis Enabled",
+            "# Zeus Sample Wallet List - Token PnL Analysis Enabled with SAFE Validation",
             "# Add your wallet addresses below (one per line)",
             "# Lines starting with # are comments and will be ignored",
             "",
@@ -1044,6 +1223,7 @@ def create_sample_wallet_file(file_path: str = "wallets.txt") -> bool:
             "# - Token PnL Analysis: Real trade pattern analysis (5 credits per wallet)",
             "# - Smart TP/SL: Pattern-based recommendations (flippers vs gem hunters)",
             "# - Direct Field Extraction: No scaling/conversion from Cielo",
+            "# - SAFE Validation: Fixed type comparison errors",
             "# - Updated Thresholds: 5min (very short) | 24hr (long holds)",
             "",
             "# Example wallets (replace with real addresses):",
@@ -1053,13 +1233,14 @@ def create_sample_wallet_file(file_path: str = "wallets.txt") -> bool:
             "",
             "# Add your wallets here:",
             "# Estimated cost: 35 credits per wallet (30 Trading Stats + 5 Token PnL)",
+            "# SAFE validation ensures no type comparison errors",
             ""
         ]
         
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(sample_wallets))
         
-        logger.info(f"Created sample wallet file with NEW FEATURES info: {file_path}")
+        logger.info(f"Created sample wallet file with NEW FEATURES and SAFE validation info: {file_path}")
         return True
         
     except Exception as e:

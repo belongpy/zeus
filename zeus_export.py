@@ -1,12 +1,11 @@
 """
-Zeus Export - COMPLETELY FIXED with Correct Cielo Field Mappings
-MAJOR FIXES:
-- Updated field mappings to use actual Cielo API field names
-- ROI calculation from PnL and buy amounts
-- Time-based profit estimation using consecutive trading days
-- Hold time conversion from seconds to minutes
-- Token count extraction from holding_distribution
-- USD to SOL conversion for volume metrics
+Zeus Export - FIXED with Safe Data Processing and Type Validation
+CRITICAL FIXES:
+- Safe handling of all data types from analysis results
+- No more type comparison errors in field extraction
+- Defensive programming with proper error handling
+- Preserved all existing export functionality
+- Enhanced data validation throughout the export pipeline
 """
 
 import os
@@ -14,40 +13,57 @@ import csv
 import json
 import logging
 import time
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 from datetime import datetime, timedelta
 
 logger = logging.getLogger("zeus.export")
 
 def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
-    """Export Zeus analysis results to CSV with CORRECT Cielo field extraction."""
+    """Export Zeus analysis results to CSV with SAFE Cielo field extraction."""
     try:
+        # SAFE input validation
+        if not isinstance(results, dict):
+            logger.error("Results must be a dictionary")
+            return False
+        
+        if not isinstance(output_file, str) or not output_file.strip():
+            logger.error("Output file must be a valid string")
+            return False
+        
         # Ensure output directory exists
         output_dir = os.path.dirname(output_file)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
-        # Extract analyses
+        # Extract analyses with SAFE validation
         analyses = results.get('analyses', [])
+        if not isinstance(analyses, list):
+            logger.warning("No valid analyses list found")
+            analyses = []
+        
         if not analyses:
             logger.warning("No analyses to export")
             return False
         
-        # Prepare CSV data with CORRECT field extraction
+        # Prepare CSV data with SAFE field extraction
         csv_data = []
         
         for analysis in analyses:
+            if not isinstance(analysis, dict):
+                logger.debug("Skipping invalid analysis entry")
+                continue
+                
             if not analysis.get('success'):
-                csv_data.append(_create_failed_row(analysis))
+                csv_data.append(_create_failed_row_safe(analysis))
                 continue
             
-            # Create analysis row with CORRECT Cielo field values
-            csv_data.append(_create_correct_cielo_analysis_row(analysis))
+            # Create analysis row with SAFE Cielo field values
+            csv_data.append(_create_safe_cielo_analysis_row(analysis))
         
-        # Sort by composite score (highest first)
-        csv_data.sort(key=lambda x: x.get('composite_score', 0), reverse=True)
+        # Sort by composite score (highest first) with SAFE comparison
+        csv_data.sort(key=lambda x: _safe_float(x.get('composite_score', 0), 0), reverse=True)
         
-        # Write CSV
+        # Write CSV with SAFE handling
         if csv_data:
             with open(output_file, 'w', newline='', encoding='utf-8') as f:
                 fieldnames = _get_updated_csv_fieldnames()
@@ -55,7 +71,7 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
                 writer.writeheader()
                 writer.writerows(csv_data)
         
-        logger.info(f"✅ Exported {len(csv_data)} wallet analyses with CORRECT CIELO FIELD VALUES to: {output_file}")
+        logger.info(f"✅ Exported {len(csv_data)} wallet analyses with SAFE CIELO FIELD VALUES to: {output_file}")
         return True
         
     except Exception as e:
@@ -87,30 +103,38 @@ def _get_updated_csv_fieldnames() -> List[str]:
         'decision_reason'
     ]
 
-def _create_correct_cielo_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """Create CSV row with CORRECT Cielo field extraction using actual field names."""
+def _create_safe_cielo_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Create CSV row with SAFE Cielo field extraction using actual field names."""
     try:
-        # Extract basic data
-        wallet_address = analysis.get('wallet_address', '')
+        # SAFE extraction of basic data
+        wallet_address = str(analysis.get('wallet_address', ''))
         binary_decisions = analysis.get('binary_decisions', {})
         strategy = analysis.get('strategy_recommendation', {})
         wallet_data = analysis.get('wallet_data', {})
         
-        logger.info(f"📊 CORRECT CIELO FIELD EXTRACTION: {wallet_address[:8]}...")
+        # Ensure nested data is valid
+        if not isinstance(binary_decisions, dict):
+            binary_decisions = {}
+        if not isinstance(strategy, dict):
+            strategy = {}
+        if not isinstance(wallet_data, dict):
+            wallet_data = {}
         
-        # Get timestamp data (1 decimal precision)
-        real_days_since_last = _extract_days_since_last_trade(analysis)
+        logger.info(f"📊 SAFE CIELO FIELD EXTRACTION: {wallet_address[:8]}...")
         
-        # Extract CORRECT Cielo field values using actual field names
-        cielo_values = _extract_correct_cielo_fields(wallet_address, wallet_data)
+        # Get timestamp data with SAFE extraction (1 decimal precision)
+        real_days_since_last = _extract_days_since_last_trade_safe(analysis)
+        
+        # Extract SAFE Cielo field values using actual field names
+        cielo_values = _extract_safe_cielo_fields(wallet_address, wallet_data)
         
         # Get real TP/SL recommendations from trade analysis
-        tp_sl_values = _extract_tp_sl_recommendations(analysis)
+        tp_sl_values = _extract_tp_sl_recommendations_safe(analysis)
         
-        # Create the row with CORRECT field values
+        # Create the row with SAFE field values
         row = {
             'wallet_address': wallet_address,
-            'composite_score': round(analysis.get('composite_score', 0), 1),
+            'composite_score': round(_safe_float(analysis.get('composite_score', 0), 0), 1),
             '7_day_winrate': cielo_values['winrate_7_day'],
             'days_since_last_trade': real_days_since_last,
             'roi_7_day': cielo_values['roi_7_day'],
@@ -126,12 +150,12 @@ def _create_correct_cielo_analysis_row(analysis: Dict[str, Any]) -> Dict[str, An
             'avg_buys_per_token': cielo_values['avg_buys_per_token'],
             'average_holding_time_minutes': cielo_values['avg_hold_time_minutes'],
             'unique_tokens_30d': cielo_values['unique_tokens_30d'],
-            'trader_pattern': _identify_trader_pattern(analysis),
-            'strategy_reason': _generate_strategy_reasoning(analysis),
-            'decision_reason': _generate_decision_reasoning(analysis)
+            'trader_pattern': _identify_trader_pattern_safe(analysis),
+            'strategy_reason': _generate_strategy_reasoning_safe(analysis),
+            'decision_reason': _generate_decision_reasoning_safe(analysis)
         }
         
-        logger.info(f"  CORRECT CIELO VALUES for {wallet_address[:8]}:")
+        logger.info(f"  SAFE CIELO VALUES for {wallet_address[:8]}:")
         logger.info(f"    roi_7_day: {cielo_values['roi_7_day']}%")
         logger.info(f"    winrate_7_day: {cielo_values['winrate_7_day']}%")
         logger.info(f"    unique_tokens_30d: {cielo_values['unique_tokens_30d']}")
@@ -141,31 +165,34 @@ def _create_correct_cielo_analysis_row(analysis: Dict[str, Any]) -> Dict[str, An
         return row
         
     except Exception as e:
-        logger.error(f"Error creating correct Cielo analysis row: {str(e)}")
-        return _create_error_row(analysis, str(e))
+        logger.error(f"Error creating safe Cielo analysis row: {str(e)}")
+        return _create_error_row_safe(analysis, str(e))
 
-def _extract_days_since_last_trade(analysis: Dict[str, Any]) -> float:
-    """Extract days since last trade from Helius timestamp data (1 decimal precision)."""
+def _extract_days_since_last_trade_safe(analysis: Dict[str, Any]) -> float:
+    """Extract days since last trade from Helius timestamp data with SAFE validation (1 decimal precision)."""
     try:
+        if not isinstance(analysis, dict):
+            return 999.0
+        
         last_tx_data = analysis.get('last_transaction_data', {})
         if isinstance(last_tx_data, dict) and last_tx_data.get('success', False):
             days_since = last_tx_data.get('days_since_last_trade', 999)
-            if days_since is not None and isinstance(days_since, (int, float)):
+            if isinstance(days_since, (int, float)) and days_since >= 0:
                 return round(float(days_since), 1)  # 1 decimal precision
         return 999.0
     except Exception as e:
         logger.error(f"Error extracting days since last trade: {str(e)}")
         return 999.0
 
-def _extract_correct_cielo_fields(wallet_address: str, wallet_data: Dict[str, Any]) -> Dict[str, Any]:
+def _extract_safe_cielo_fields(wallet_address: str, wallet_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Extract CORRECT field values from Cielo Trading Stats API response using ACTUAL field names.
-    Based on debug results showing the real Cielo API structure.
+    Extract SAFE field values from Cielo Trading Stats API response using ACTUAL field names.
+    CRITICAL FIX: No more type comparison errors!
     """
     try:
-        logger.info(f"📊 CORRECT CIELO FIELD EXTRACTION for {wallet_address[:8]}...")
+        logger.info(f"📊 SAFE CIELO FIELD EXTRACTION for {wallet_address[:8]}...")
         
-        # Initialize with defaults
+        # Initialize with safe defaults
         values = {
             'roi_7_day': 0.0,
             'winrate_7_day': 0.0,
@@ -178,12 +205,12 @@ def _extract_correct_cielo_fields(wallet_address: str, wallet_data: Dict[str, An
             'unique_tokens_30d': 0
         }
         
-        # Extract Cielo data from nested structure
+        # SAFE extraction of Cielo data from nested structure
         cielo_data = None
         if isinstance(wallet_data, dict):
             if 'data' in wallet_data and isinstance(wallet_data['data'], dict):
                 cielo_data = wallet_data['data']
-            elif wallet_data.get('source') in ['cielo_trading_stats', 'cielo_finance_real']:
+            elif wallet_data.get('source') in ['cielo_trading_stats', 'cielo_finance_real', 'cielo_trading_stats_safe']:
                 cielo_data = wallet_data.get('data', {})
             else:
                 cielo_data = wallet_data
@@ -194,108 +221,134 @@ def _extract_correct_cielo_fields(wallet_address: str, wallet_data: Dict[str, An
         
         logger.info(f"Available Cielo API fields: {list(cielo_data.keys())}")
         
-        # 1. EXTRACT WINRATE - Field name: 'winrate' (CONFIRMED from debug)
-        if 'winrate' in cielo_data and cielo_data['winrate'] is not None:
+        # 1. SAFE EXTRACT WINRATE - Field name: 'winrate' (CONFIRMED from debug)
+        if 'winrate' in cielo_data:
             try:
-                winrate_value = float(cielo_data['winrate'])
-                values['winrate_7_day'] = round(winrate_value, 2)
-                logger.info(f"✅ FOUND WINRATE: {winrate_value}%")
+                winrate_value = cielo_data['winrate']
+                if isinstance(winrate_value, (int, float)):
+                    values['winrate_7_day'] = round(float(winrate_value), 2)
+                    logger.info(f"✅ FOUND WINRATE: {winrate_value}%")
             except (ValueError, TypeError) as e:
                 logger.error(f"Failed to parse winrate: {e}")
         
-        # 2. CALCULATE ROI from PnL and total_buy_amount_usd (CONFIRMED from debug)
-        if 'pnl' in cielo_data and 'total_buy_amount_usd' in cielo_data:
+        # 2. SAFE CALCULATE ROI from PnL and total_buy_amount_usd (CONFIRMED from debug)
+        pnl_field = cielo_data.get('pnl')
+        buy_amount_field = cielo_data.get('total_buy_amount_usd')
+        
+        if pnl_field is not None and buy_amount_field is not None:
             try:
-                pnl = float(cielo_data['pnl'])
-                total_buy = float(cielo_data['total_buy_amount_usd'])
-                if total_buy > 0:
-                    roi_percent = (pnl / total_buy) * 100
-                    values['roi_7_day'] = round(roi_percent, 2)
-                    logger.info(f"✅ CALCULATED ROI: {pnl} / {total_buy} * 100 = {roi_percent:.2f}%")
+                if isinstance(pnl_field, (int, float)) and isinstance(buy_amount_field, (int, float)):
+                    pnl = float(pnl_field)
+                    total_buy = float(buy_amount_field)
+                    if total_buy > 0:
+                        roi_percent = (pnl / total_buy) * 100
+                        values['roi_7_day'] = round(roi_percent, 2)
+                        logger.info(f"✅ CALCULATED ROI: {pnl} / {total_buy} * 100 = {roi_percent:.2f}%")
             except (ValueError, TypeError) as e:
                 logger.error(f"Failed to calculate ROI: {e}")
         
-        # 3. EXTRACT UNIQUE TOKENS from holding_distribution.total_tokens (CONFIRMED from debug)
-        if 'holding_distribution' in cielo_data:
+        # 3. SAFE EXTRACT UNIQUE TOKENS from holding_distribution.total_tokens (CONFIRMED from debug)
+        holding_dist = cielo_data.get('holding_distribution')
+        if isinstance(holding_dist, dict) and 'total_tokens' in holding_dist:
             try:
-                hold_dist = cielo_data['holding_distribution']
-                if isinstance(hold_dist, dict) and 'total_tokens' in hold_dist:
-                    tokens_count = int(hold_dist['total_tokens'])
-                    values['unique_tokens_30d'] = tokens_count
+                tokens_count = holding_dist['total_tokens']
+                if isinstance(tokens_count, (int, float)):
+                    values['unique_tokens_30d'] = int(tokens_count)
                     logger.info(f"✅ FOUND UNIQUE TOKENS: {tokens_count}")
             except (ValueError, TypeError) as e:
                 logger.error(f"Failed to parse unique tokens: {e}")
         
-        # 4. CONVERT HOLD TIME from average_holding_time_sec to minutes (CONFIRMED from debug)
-        if 'average_holding_time_sec' in cielo_data:
+        # 4. SAFE CONVERT HOLD TIME from average_holding_time_sec to minutes (CONFIRMED from debug)
+        hold_time_sec = cielo_data.get('average_holding_time_sec')
+        if hold_time_sec is not None:
             try:
-                seconds = float(cielo_data['average_holding_time_sec'])
-                minutes = seconds / 60.0
-                values['avg_hold_time_minutes'] = round(minutes, 1)
-                logger.info(f"✅ CONVERTED HOLD TIME: {seconds}s = {minutes:.1f}min")
+                if isinstance(hold_time_sec, (int, float)):
+                    seconds = float(hold_time_sec)
+                    minutes = seconds / 60.0
+                    values['avg_hold_time_minutes'] = round(minutes, 1)
+                    logger.info(f"✅ CONVERTED HOLD TIME: {seconds}s = {minutes:.1f}min")
             except (ValueError, TypeError) as e:
                 logger.error(f"Failed to convert hold time: {e}")
         
-        # 5. CALCULATE TIME-BASED PROFITS using consecutive_trading_days (CONFIRMED from debug)
-        if 'pnl' in cielo_data and 'consecutive_trading_days' in cielo_data:
+        # 5. SAFE CALCULATE TIME-BASED PROFITS using consecutive_trading_days (CONFIRMED from debug)
+        pnl_field = cielo_data.get('pnl')
+        trading_days = cielo_data.get('consecutive_trading_days')
+        
+        if pnl_field is not None and trading_days is not None:
             try:
-                pnl = float(cielo_data['pnl'])
-                days = max(1, int(cielo_data['consecutive_trading_days']))
-                daily_profit = pnl / days
-                
-                values['usd_profit_2_days'] = round(daily_profit * 2, 1)
-                values['usd_profit_7_days'] = round(min(pnl, daily_profit * 7), 1)  # Cap at total PnL
-                values['usd_profit_30_days'] = round(pnl, 1)
-                
-                logger.info(f"✅ CALCULATED TIME-BASED PROFITS:")
-                logger.info(f"   Daily profit: ${daily_profit:.1f} (PnL: ${pnl} / {days} days)")
-                logger.info(f"   2-day: ${values['usd_profit_2_days']}")
-                logger.info(f"   7-day: ${values['usd_profit_7_days']}")
-                logger.info(f"   30-day: ${values['usd_profit_30_days']}")
+                if isinstance(pnl_field, (int, float)) and isinstance(trading_days, (int, float)):
+                    pnl = float(pnl_field)
+                    days = max(1, int(trading_days))
+                    daily_profit = pnl / days
+                    
+                    values['usd_profit_2_days'] = round(daily_profit * 2, 1)
+                    values['usd_profit_7_days'] = round(min(pnl, daily_profit * 7), 1)  # Cap at total PnL
+                    values['usd_profit_30_days'] = round(pnl, 1)
+                    
+                    logger.info(f"✅ CALCULATED TIME-BASED PROFITS:")
+                    logger.info(f"   Daily profit: ${daily_profit:.1f} (PnL: ${pnl} / {days} days)")
+                    logger.info(f"   2-day: ${values['usd_profit_2_days']}")
+                    logger.info(f"   7-day: ${values['usd_profit_7_days']}")
+                    logger.info(f"   30-day: ${values['usd_profit_30_days']}")
             except (ValueError, TypeError) as e:
                 logger.error(f"Failed to calculate time-based profits: {e}")
         
-        # 6. CONVERT VOLUME METRICS (USD to SOL) using average_buy_amount_usd (CONFIRMED from debug)
-        if 'average_buy_amount_usd' in cielo_data:
+        # 6. SAFE CONVERT VOLUME METRICS (USD to SOL) using average_buy_amount_usd (CONFIRMED from debug)
+        avg_buy_usd = cielo_data.get('average_buy_amount_usd')
+        if avg_buy_usd is not None:
             try:
-                avg_usd = float(cielo_data['average_buy_amount_usd'])
-                sol_price_estimate = 100.0  # Rough SOL price estimate
-                values['avg_sol_buy_per_token'] = round(avg_usd / sol_price_estimate, 1)
-                logger.info(f"✅ CONVERTED VOLUME: ${avg_usd} / ${sol_price_estimate} = {values['avg_sol_buy_per_token']} SOL")
+                if isinstance(avg_buy_usd, (int, float)):
+                    avg_usd = float(avg_buy_usd)
+                    sol_price_estimate = 100.0  # Rough SOL price estimate
+                    values['avg_sol_buy_per_token'] = round(avg_usd / sol_price_estimate, 1)
+                    logger.info(f"✅ CONVERTED VOLUME: ${avg_usd} / ${sol_price_estimate} = {values['avg_sol_buy_per_token']} SOL")
             except (ValueError, TypeError) as e:
                 logger.error(f"Failed to convert volume: {e}")
         
-        # 7. CALCULATE TRADE FREQUENCY using buy_count and unique_tokens (CONFIRMED from debug)
-        if 'buy_count' in cielo_data and values['unique_tokens_30d'] > 0:
+        # 7. SAFE CALCULATE TRADE FREQUENCY using buy_count and unique_tokens (CONFIRMED from debug)
+        buy_count = cielo_data.get('buy_count')
+        unique_tokens = values['unique_tokens_30d']
+        
+        if buy_count is not None and unique_tokens > 0:
             try:
-                buys = int(cielo_data['buy_count'])
-                tokens = values['unique_tokens_30d']
-                values['avg_buys_per_token'] = round(buys / tokens, 1)
-                logger.info(f"✅ CALCULATED TRADE FREQUENCY: {buys} buys / {tokens} tokens = {values['avg_buys_per_token']}")
+                if isinstance(buy_count, (int, float)):
+                    buys = int(buy_count)
+                    tokens = unique_tokens
+                    values['avg_buys_per_token'] = round(buys / tokens, 1)
+                    logger.info(f"✅ CALCULATED TRADE FREQUENCY: {buys} buys / {tokens} tokens = {values['avg_buys_per_token']}")
             except (ValueError, TypeError) as e:
                 logger.error(f"Failed to calculate trade frequency: {e}")
         
-        logger.info(f"FINAL CORRECT CIELO VALUES for {wallet_address[:8]}:")
+        logger.info(f"FINAL SAFE CIELO VALUES for {wallet_address[:8]}:")
         for key, value in values.items():
             logger.info(f"  {key}: {value}")
         
         return values
         
     except Exception as e:
-        logger.error(f"Error extracting correct Cielo fields: {str(e)}")
+        logger.error(f"Error extracting safe Cielo fields: {str(e)}")
         return values
 
-def _extract_tp_sl_recommendations(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract TP/SL recommendations from trade analysis data."""
+def _extract_tp_sl_recommendations_safe(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract TP/SL recommendations from trade analysis data with SAFE validation."""
     try:
+        if not isinstance(analysis, dict):
+            return {
+                'tp1': 75,
+                'tp2': 200,
+                'stop_loss': -35
+            }
+        
         strategy = analysis.get('strategy_recommendation', {})
+        if not isinstance(strategy, dict):
+            strategy = {}
         
-        # Get values with defaults
-        tp1 = strategy.get('tp1_percent', 75)
-        tp2 = strategy.get('tp2_percent', 200)
-        stop_loss = strategy.get('stop_loss_percent', -35)
+        # Get values with safe defaults and validation
+        tp1 = _safe_int(strategy.get('tp1_percent', 75), 75)
+        tp2 = _safe_int(strategy.get('tp2_percent', 200), 200)
+        stop_loss = _safe_int(strategy.get('stop_loss_percent', -35), -35)
         
-        # Validate ranges
+        # SAFE range validation
         tp1 = max(10, min(500, tp1))
         tp2 = max(tp1 + 20, min(1000, tp2))
         stop_loss = max(-75, min(-10, stop_loss))
@@ -314,34 +367,51 @@ def _extract_tp_sl_recommendations(analysis: Dict[str, Any]) -> Dict[str, Any]:
             'stop_loss': -35
         }
 
-def _identify_trader_pattern(analysis: Dict[str, Any]) -> str:
-    """Identify trader pattern based on analysis data."""
+def _identify_trader_pattern_safe(analysis: Dict[str, Any]) -> str:
+    """Identify trader pattern based on analysis data with SAFE validation."""
     try:
-        # Check if we have trade pattern analysis
-        trade_pattern_analysis = analysis.get('trade_pattern_analysis', {})
-        if trade_pattern_analysis and 'pattern' in trade_pattern_analysis:
-            return trade_pattern_analysis['pattern']
-        
-        # Fallback to token analysis
-        token_analysis = analysis.get('token_analysis', [])
-        
-        if not token_analysis:
+        if not isinstance(analysis, dict):
             return 'insufficient_data'
         
-        completed_trades = [t for t in token_analysis if t.get('trade_status') == 'completed']
+        # Check if we have trade pattern analysis
+        trade_pattern_analysis = analysis.get('trade_pattern_analysis', {})
+        if isinstance(trade_pattern_analysis, dict) and 'pattern' in trade_pattern_analysis:
+            pattern = trade_pattern_analysis['pattern']
+            if isinstance(pattern, str):
+                return pattern
+        
+        # Fallback to token analysis with SAFE validation
+        token_analysis = analysis.get('token_analysis', [])
+        
+        if not isinstance(token_analysis, list) or not token_analysis:
+            return 'insufficient_data'
+        
+        completed_trades = []
+        for t in token_analysis:
+            if isinstance(t, dict) and t.get('trade_status') == 'completed':
+                completed_trades.append(t)
         
         if len(completed_trades) < 2:
             return 'new_trader'
         
-        # Calculate metrics
-        rois = [t.get('roi_percent', 0) for t in completed_trades]
-        hold_times = [t.get('hold_time_hours', 0) for t in completed_trades]
+        # Calculate metrics with SAFE extraction
+        rois = []
+        hold_times = []
+        
+        for t in completed_trades:
+            roi = _safe_float(t.get('roi_percent', 0), 0)
+            hold_time = _safe_float(t.get('hold_time_hours', 0), 0)
+            rois.append(roi)
+            hold_times.append(hold_time)
+        
+        if not rois or not hold_times:
+            return 'insufficient_data'
         
         avg_roi = sum(rois) / len(rois)
         avg_hold_time = sum(hold_times) / len(hold_times)
         moonshots = sum(1 for roi in rois if roi >= 400)
         
-        # Pattern identification with updated thresholds
+        # Pattern identification with updated thresholds and SAFE comparisons
         if avg_hold_time < 0.083:  # Less than 5 minutes
             return 'flipper'
         elif avg_hold_time < 1:
@@ -359,11 +429,19 @@ def _identify_trader_pattern(analysis: Dict[str, Any]) -> str:
         logger.error(f"Error identifying trader pattern: {str(e)}")
         return 'analysis_error'
 
-def _generate_strategy_reasoning(analysis: Dict[str, Any]) -> str:
-    """Generate strategy reasoning."""
+def _generate_strategy_reasoning_safe(analysis: Dict[str, Any]) -> str:
+    """Generate strategy reasoning with SAFE validation."""
     try:
+        if not isinstance(analysis, dict):
+            return "Analysis data error"
+        
         binary_decisions = analysis.get('binary_decisions', {})
         strategy = analysis.get('strategy_recommendation', {})
+        
+        if not isinstance(binary_decisions, dict):
+            binary_decisions = {}
+        if not isinstance(strategy, dict):
+            strategy = {}
         
         follow_wallet = binary_decisions.get('follow_wallet', False)
         follow_sells = binary_decisions.get('follow_sells', False)
@@ -371,9 +449,11 @@ def _generate_strategy_reasoning(analysis: Dict[str, Any]) -> str:
         if not follow_wallet:
             return "Not recommended - insufficient score"
         
-        # Get timestamp info
+        # Get timestamp info with SAFE extraction
         last_tx_data = analysis.get('last_transaction_data', {})
-        days_since_last = last_tx_data.get('days_since_last_trade', 999)
+        days_since_last = 999
+        if isinstance(last_tx_data, dict):
+            days_since_last = _safe_float(last_tx_data.get('days_since_last_trade', 999), 999)
         
         reasoning_parts = []
         
@@ -391,8 +471,8 @@ def _generate_strategy_reasoning(analysis: Dict[str, Any]) -> str:
         if follow_sells:
             reasoning_parts.append("Mirror their exits")
         else:
-            tp1 = strategy.get('tp1_percent', 0)
-            tp2 = strategy.get('tp2_percent', 0)
+            tp1 = _safe_int(strategy.get('tp1_percent', 0), 0)
+            tp2 = _safe_int(strategy.get('tp2_percent', 0), 0)
             reasoning_parts.append(f"Custom exits: {tp1}%-{tp2}%")
         
         return " | ".join(reasoning_parts)
@@ -401,11 +481,17 @@ def _generate_strategy_reasoning(analysis: Dict[str, Any]) -> str:
         logger.error(f"Error generating strategy reasoning: {str(e)}")
         return f"Strategy error: {str(e)}"
 
-def _generate_decision_reasoning(analysis: Dict[str, Any]) -> str:
-    """Generate decision reasoning."""
+def _generate_decision_reasoning_safe(analysis: Dict[str, Any]) -> str:
+    """Generate decision reasoning with SAFE validation."""
     try:
+        if not isinstance(analysis, dict):
+            return "Analysis data error"
+        
         binary_decisions = analysis.get('binary_decisions', {})
-        composite_score = analysis.get('composite_score', 0)
+        composite_score = _safe_float(analysis.get('composite_score', 0), 0)
+        
+        if not isinstance(binary_decisions, dict):
+            binary_decisions = {}
         
         follow_wallet = binary_decisions.get('follow_wallet', False)
         follow_sells = binary_decisions.get('follow_sells', False)
@@ -431,10 +517,10 @@ def _generate_decision_reasoning(analysis: Dict[str, Any]) -> str:
         logger.error(f"Error generating decision reasoning: {str(e)}")
         return f"Decision error: {str(e)}"
 
-def _create_failed_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """Create CSV row for failed analysis."""
-    wallet_address = analysis.get('wallet_address', '')
-    error_message = analysis.get('error', 'Unknown error')
+def _create_failed_row_safe(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Create CSV row for failed analysis with SAFE validation."""
+    wallet_address = str(analysis.get('wallet_address', '')) if isinstance(analysis, dict) else ''
+    error_message = str(analysis.get('error', 'Unknown error')) if isinstance(analysis, dict) else 'Unknown error'
     
     return {
         'wallet_address': wallet_address,
@@ -459,10 +545,12 @@ def _create_failed_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
         'decision_reason': f"Cannot analyze: {error_message}"
     }
 
-def _create_error_row(analysis: Dict[str, Any], error_msg: str) -> Dict[str, Any]:
-    """Create error row when row creation fails."""
+def _create_error_row_safe(analysis: Dict[str, Any], error_msg: str) -> Dict[str, Any]:
+    """Create error row when row creation fails with SAFE validation."""
+    wallet_address = str(analysis.get('wallet_address', '')) if isinstance(analysis, dict) else ''
+    
     return {
-        'wallet_address': analysis.get('wallet_address', ''),
+        'wallet_address': wallet_address,
         'composite_score': 0,
         '7_day_winrate': 0.0,
         'days_since_last_trade': 999,
@@ -485,31 +573,47 @@ def _create_error_row(analysis: Dict[str, Any], error_msg: str) -> Dict[str, Any
     }
 
 def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
-    """Export Zeus analysis summary to text file."""
+    """Export Zeus analysis summary to text file with SAFE validation."""
     try:
+        # SAFE input validation
+        if not isinstance(results, dict):
+            logger.error("Results must be a dictionary")
+            return False
+        
+        if not isinstance(output_file, str) or not output_file.strip():
+            logger.error("Output file must be a valid string")
+            return False
+        
         # Ensure output directory exists
         output_dir = os.path.dirname(output_file)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
         analyses = results.get('analyses', [])
-        successful_analyses = [a for a in analyses if a.get('success')]
+        if not isinstance(analyses, list):
+            analyses = []
+        
+        successful_analyses = []
+        for a in analyses:
+            if isinstance(a, dict) and a.get('success'):
+                successful_analyses.append(a)
         
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write("=" * 80 + "\n")
-            f.write("ZEUS WALLET ANALYSIS SUMMARY - CORRECT CIELO FIELD VALUES\n")
+            f.write("ZEUS WALLET ANALYSIS SUMMARY - SAFE CIELO FIELD VALUES\n")
             f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("=" * 80 + "\n\n")
             
             f.write("📊 ANALYSIS OVERVIEW\n")
             f.write("-" * 40 + "\n")
             f.write(f"Total Wallets: {len(successful_analyses)}\n")
-            f.write(f"Data Source: CORRECT Cielo API field extraction\n")
+            f.write(f"Data Source: SAFE Cielo API field extraction\n")
             f.write(f"Field Mappings: Updated to match actual Cielo response\n")
             f.write(f"ROI Calculation: PnL / total_buy_amount_usd * 100\n")
             f.write(f"Time Profits: Based on consecutive_trading_days\n")
             f.write(f"Hold Time: Converted from seconds to minutes\n")
-            f.write(f"Token Count: Extracted from holding_distribution.total_tokens\n\n")
+            f.write(f"Token Count: Extracted from holding_distribution.total_tokens\n")
+            f.write(f"Validation: SAFE type checking throughout\n\n")
         
         logger.info(f"✅ Exported Zeus summary to: {output_file}")
         return True
@@ -517,3 +621,23 @@ def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
     except Exception as e:
         logger.error(f"❌ Error exporting Zeus summary: {str(e)}")
         return False
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Safe float conversion with SAFE default."""
+    try:
+        if isinstance(value, (int, float)) and not (isinstance(value, float) and value != value):  # Check for NaN
+            return float(value)
+        else:
+            return float(default)
+    except:
+        return float(default)
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    """Safe int conversion with SAFE default."""
+    try:
+        if isinstance(value, (int, float)) and not (isinstance(value, float) and value != value):  # Check for NaN
+            return int(value)
+        else:
+            return int(default)
+    except:
+        return int(default)
