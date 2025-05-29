@@ -1,14 +1,11 @@
 """
-Zeus Analyzer - Core Wallet Analysis Engine - COMPLETE INDIVIDUALIZED VERSION
-30-Day Analysis with Smart Token Sampling, Binary Decisions, and Individualized Strategies
+Zeus Analyzer - Core Wallet Analysis Engine - FIXED VERSION
+Fixed wallet_data storage to include full API response for comprehensive Cielo data extraction
 
-COMPLETE FEATURES:
-- All original Zeus analyzer functionality
-- Enhanced individualized strategy recommendations
-- Wallet-specific stop loss calculations
-- Detailed trader pattern identification  
-- Personalized exit analysis and insights
-- Custom TP/SL strategies based on actual behavior
+FIXED ISSUES:
+- Now stores complete wallet_data structure (not just data portion)
+- Ensures export function can access full Cielo response with metadata
+- All other functionality remains unchanged
 """
 
 import logging
@@ -22,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 logger = logging.getLogger("zeus.analyzer")
 
 class ZeusAnalyzer:
-    """Core wallet analysis engine with individualized strategy system - COMPLETE VERSION."""
+    """Core wallet analysis engine with individualized strategy system - FIXED VERSION."""
     
     def __init__(self, api_manager: Any, config: Dict[str, Any]):
         """
@@ -119,7 +116,8 @@ class ZeusAnalyzer:
                 binary_decisions, scoring_result, analysis_result
             )
             
-            # Final result
+            # FIXED: Store complete wallet_data structure (not just data portion)
+            # This allows the export function to access full Cielo response with metadata
             return {
                 'success': True,
                 'wallet_address': wallet_address,
@@ -132,7 +130,7 @@ class ZeusAnalyzer:
                 'binary_decisions': binary_decisions,
                 'strategy_recommendation': strategy_recommendation,
                 'token_analysis': token_analysis,
-                'wallet_data': wallet_data.get('data', {}),
+                'wallet_data': wallet_data,  # FIXED: Store complete structure, not just data portion
                 'conclusive_analysis': analysis_result.get('conclusive', True),
                 'analysis_phase': analysis_result.get('analysis_phase', 'data_processing')
             }
