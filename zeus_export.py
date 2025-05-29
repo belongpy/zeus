@@ -1,20 +1,20 @@
 """
-Zeus Export - CSV Export with INDIVIDUALIZED Analysis - COMPLETE VERSION
-Exports Zeus analysis results with personalized insights and wallet-specific metrics
+Zeus Export - CSV Export with UPDATED Column Structure
+Exports Zeus analysis results with new column layout and comprehensive Cielo data integration
 
-COMPLETE FEATURES:
-- Individualized strategy and decision reasoning (not cookie-cutter)
-- Wallet-specific stop loss recommendations based on actual loss management
-- Actual average SOL buy amounts (not position size ranges)
-- Fixed encoding issues (proper >= symbols)
-- Detailed, personalized insights for each wallet
-- All original export functionality maintained
+NEW FEATURES:
+- Updated column structure per user specifications
+- Comprehensive Cielo data extraction (prioritized over calculations)
+- Fallback calculations using token analysis only when needed
+- Cleaner, more focused CSV output
+- Scoring system remains completely unchanged
 """
 
 import os
 import csv
 import json
 import logging
+import time
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
@@ -22,7 +22,7 @@ logger = logging.getLogger("zeus.export")
 
 def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
     """
-    Export Zeus analysis results to CSV with individualized insights.
+    Export Zeus analysis results to CSV with updated column structure.
     
     Args:
         results: Zeus analysis results dictionary
@@ -43,7 +43,7 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
             logger.warning("No analyses to export")
             return False
         
-        # Prepare CSV data with individualized insights
+        # Prepare CSV data with new structure
         csv_data = []
         
         for analysis in analyses:
@@ -51,156 +51,281 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
                 csv_data.append(_create_failed_row(analysis))
                 continue
             
-            # Create individualized analysis row
-            csv_data.append(_create_individualized_analysis_row(analysis))
+            # Create updated analysis row
+            csv_data.append(_create_updated_analysis_row(analysis))
         
         # Sort by composite score (highest first)
         csv_data.sort(key=lambda x: x.get('composite_score', 0), reverse=True)
         
-        # Add rank column
-        for i, row in enumerate(csv_data, 1):
-            row['rank'] = i
-        
         # Write CSV
         if csv_data:
             with open(output_file, 'w', newline='', encoding='utf-8') as f:
-                fieldnames = _get_csv_fieldnames()
+                fieldnames = _get_updated_csv_fieldnames()
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(csv_data)
         
-        logger.info(f"✅ Exported {len(csv_data)} individualized wallet analyses to: {output_file}")
+        logger.info(f"✅ Exported {len(csv_data)} wallet analyses with updated structure to: {output_file}")
         return True
         
     except Exception as e:
         logger.error(f"❌ Error exporting Zeus analysis: {str(e)}")
         return False
 
-def _get_csv_fieldnames() -> List[str]:
-    """Get CSV column fieldnames with improved naming."""
+def _get_updated_csv_fieldnames() -> List[str]:
+    """Get updated CSV column fieldnames per user specifications."""
     return [
-        # Basic Info
-        'rank',
-        'wallet_address', 
-        
-        # Binary Decisions (MOST IMPORTANT)
-        'follow_wallet',
-        'follow_sells',
-        
-        # Bot Configuration
-        'tp1_percent',
-        'tp2_percent',
-        'tp3_percent', 
-        'stop_loss_percent',
-        'avg_sol_buy',  # CHANGED: Show actual average SOL buy amount
-        
-        # Scoring & Metrics
+        'wallet_address',
         'composite_score',
-        'risk_adjusted_score',
-        'distribution_score',
-        'discipline_score',
-        'market_impact_score',
-        'consistency_score',
-        
-        # Volume Qualifier
-        'unique_tokens_traded',
-        'tokens_analyzed',
-        'volume_tier',
-        
-        # Analysis Details - INDIVIDUALIZED
+        'days_since_last_trade',
+        'roi',  # 7-day ROI from Cielo
+        'median_roi',  # 7-day median ROI from Cielo
+        'usd_profit_2_days',  # Realized gains from Cielo
+        'usd_profit_7_days',  # Realized gains from Cielo
+        'usd_profit_30_days',  # Realized gains from Cielo
+        'copy_wallet',  # YES/NO
+        'copy_sells',  # YES/NO
+        'tp_1',  # TP1 percentage
+        'tp_2',  # TP2 percentage
+        'stop_loss',  # Stop loss percentage
+        'avg_sol_buy_per_token',  # Average SOL per token from Cielo
+        'avg_buys_per_token',  # Average buys per token from Cielo
+        'average_holding_time',  # Average holding time from Cielo
+        'total_buys_30_days',  # Total buys from Cielo
+        'total_sells_30_days',  # Total sells from Cielo
         'trader_pattern',
-        'strategy_reasoning',  # INDIVIDUALIZED insights
-        'decision_reasoning',  # INDIVIDUALIZED insights
+        'strategy_reason',
+        'decision_reason'
     ]
 
-def _create_individualized_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """Create CSV row with INDIVIDUALIZED insights and wallet-specific metrics."""
+def _create_updated_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Create CSV row with updated structure and comprehensive Cielo data integration."""
     try:
-        # Extract data
+        # Extract basic data
         wallet_address = analysis.get('wallet_address', '')
         binary_decisions = analysis.get('binary_decisions', {})
         strategy = analysis.get('strategy_recommendation', {})
-        scoring_breakdown = analysis.get('scoring_breakdown', {})
         token_analysis = analysis.get('token_analysis', [])
+        wallet_data = analysis.get('wallet_data', {})
         
-        # CALCULATE ACTUAL AVERAGE SOL BUY (not position size range)
-        actual_avg_sol_buy = _calculate_actual_avg_sol_buy(token_analysis)
+        # Extract comprehensive Cielo metrics (prioritized over calculations)
+        cielo_metrics = _extract_comprehensive_cielo_metrics(wallet_data, token_analysis)
         
-        # INDIVIDUALIZED STOP LOSS based on their loss management
-        individualized_stop_loss = _calculate_individualized_stop_loss(token_analysis, scoring_breakdown)
-        
-        # Basic row data
+        # Create the row with new structure
         row = {
             'wallet_address': wallet_address,
-            'unique_tokens_traded': analysis.get('unique_tokens_traded', 0),
-            'tokens_analyzed': analysis.get('tokens_analyzed', 0)
+            'composite_score': round(analysis.get('composite_score', 0), 1),
+            'days_since_last_trade': cielo_metrics['days_since_last_trade'],
+            'roi': cielo_metrics['roi_7_day'],
+            'median_roi': cielo_metrics['median_roi_7_day'],
+            'usd_profit_2_days': cielo_metrics['usd_profit_2_days'],
+            'usd_profit_7_days': cielo_metrics['usd_profit_7_days'],
+            'usd_profit_30_days': cielo_metrics['usd_profit_30_days'],
+            'copy_wallet': 'YES' if binary_decisions.get('follow_wallet', False) else 'NO',
+            'copy_sells': 'YES' if binary_decisions.get('follow_sells', False) else 'NO',
+            'tp_1': strategy.get('tp1_percent', 0),
+            'tp_2': strategy.get('tp2_percent', 0),
+            'stop_loss': strategy.get('stop_loss_percent', -35),
+            'avg_sol_buy_per_token': cielo_metrics['avg_sol_buy_per_token'],
+            'avg_buys_per_token': cielo_metrics['avg_buys_per_token'],
+            'average_holding_time': cielo_metrics['average_holding_time'],
+            'total_buys_30_days': cielo_metrics['total_buys_30_days'],
+            'total_sells_30_days': cielo_metrics['total_sells_30_days'],
+            'trader_pattern': _identify_detailed_trader_pattern(analysis),
+            'strategy_reason': _generate_individualized_strategy_reasoning(analysis),
+            'decision_reason': _generate_individualized_decision_reasoning(analysis)
         }
-        
-        # Binary decisions
-        row.update({
-            'follow_wallet': 'YES' if binary_decisions.get('follow_wallet', False) else 'NO',
-            'follow_sells': 'YES' if binary_decisions.get('follow_sells', False) else 'NO'
-        })
-        
-        # Bot configuration with individualized metrics
-        row.update({
-            'tp1_percent': strategy.get('tp1_percent', 0),
-            'tp2_percent': strategy.get('tp2_percent', 0),
-            'tp3_percent': strategy.get('tp3_percent', 0),
-            'stop_loss_percent': individualized_stop_loss,  # INDIVIDUALIZED
-            'avg_sol_buy': actual_avg_sol_buy  # ACTUAL average SOL buy amount
-        })
-        
-        # Scoring
-        row.update({
-            'composite_score': analysis.get('composite_score', 0)
-        })
-        
-        # Component scores
-        component_scores = scoring_breakdown.get('component_scores', {})
-        row.update({
-            'risk_adjusted_score': component_scores.get('risk_adjusted_score', 0),
-            'distribution_score': component_scores.get('distribution_score', 0),
-            'discipline_score': component_scores.get('discipline_score', 0),
-            'market_impact_score': component_scores.get('market_impact_score', 0),
-            'consistency_score': component_scores.get('consistency_score', 0)
-        })
-        
-        # Volume qualifier
-        volume_qualifier = scoring_breakdown.get('volume_qualifier', {})
-        volume_tier = volume_qualifier.get('tier', 'unknown')
-        
-        if volume_tier == 'baseline':
-            tier_display = 'Baseline (6+ tokens)'
-        elif volume_tier == 'emerging':
-            tier_display = 'Emerging (4-5 tokens)'
-        elif volume_tier == 'very_new':
-            tier_display = 'Very New (2-3 tokens)'
-        else:
-            tier_display = f'{volume_tier} ({analysis.get("unique_tokens_traded", 0)} tokens)'
-            
-        row.update({
-            'volume_tier': tier_display
-        })
-        
-        # INDIVIDUALIZED INSIGHTS
-        trader_pattern = _identify_detailed_trader_pattern(analysis)
-        individualized_strategy_reasoning = _generate_individualized_strategy_reasoning(analysis)
-        individualized_decision_reasoning = _generate_individualized_decision_reasoning(analysis)
-        
-        row.update({
-            'trader_pattern': trader_pattern,
-            'strategy_reasoning': individualized_strategy_reasoning,
-            'decision_reasoning': individualized_decision_reasoning
-        })
         
         return row
         
     except Exception as e:
-        logger.error(f"Error creating individualized analysis row: {str(e)}")
+        logger.error(f"Error creating updated analysis row: {str(e)}")
         return _create_error_row(analysis, str(e))
 
-def _calculate_actual_avg_sol_buy(token_analysis: List[Dict[str, Any]]) -> float:
+def _extract_comprehensive_cielo_metrics(wallet_data: Dict[str, Any], token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Extract comprehensive metrics from Cielo data with minimal fallback calculations.
+    Prioritizes Cielo API data over manual calculations.
+    
+    Args:
+        wallet_data: Raw wallet data from Cielo API
+        token_analysis: Token analysis for fallback calculations only
+        
+    Returns:
+        Dict with all required metrics
+    """
+    try:
+        # Initialize with defaults
+        metrics = {
+            'roi_7_day': 0.0,
+            'median_roi_7_day': 0.0,
+            'usd_profit_2_days': 0.0,
+            'usd_profit_7_days': 0.0,
+            'usd_profit_30_days': 0.0,
+            'total_buys_30_days': 0,
+            'total_sells_30_days': 0,
+            'avg_sol_buy_per_token': 0.0,
+            'avg_buys_per_token': 0.0,
+            'average_holding_time': 0.0,
+            'days_since_last_trade': 999
+        }
+        
+        # Extract from Cielo data (prioritized)
+        if isinstance(wallet_data, dict):
+            # Handle nested data structure - get actual Cielo response
+            cielo_data = wallet_data.get('data', wallet_data) if 'data' in wallet_data else wallet_data
+            
+            if isinstance(cielo_data, dict):
+                logger.info(f"Extracting from Cielo data with keys: {list(cielo_data.keys())}")
+                
+                # ROI Metrics (7-day focus) - try multiple field name variations
+                metrics['roi_7_day'] = _safe_float_extract(cielo_data, [
+                    'roi_7d', 'roi_7_day', 'weekly_roi', '7d_roi', 'roi_week', 'avg_roi'
+                ], 0.0)
+                
+                metrics['median_roi_7_day'] = _safe_float_extract(cielo_data, [
+                    'median_roi_7d', 'median_roi_7_day', 'median_weekly_roi', 'median_7d_roi', 'median_roi'
+                ], 0.0)
+                
+                # USD Profit Metrics (realized gains) - comprehensive field search
+                metrics['usd_profit_2_days'] = _safe_float_extract(cielo_data, [
+                    'realized_pnl_2d', 'profit_2d', 'pnl_2_day', 'realized_profit_2d', 'pnl_2d'
+                ], 0.0)
+                
+                metrics['usd_profit_7_days'] = _safe_float_extract(cielo_data, [
+                    'realized_pnl_7d', 'profit_7d', 'pnl_7_day', 'realized_profit_7d', 'pnl_7d', 'pnl'
+                ], 0.0)
+                
+                metrics['usd_profit_30_days'] = _safe_float_extract(cielo_data, [
+                    'realized_pnl_30d', 'profit_30d', 'pnl_30_day', 'realized_profit_30d', 'pnl_30d', 'total_pnl'
+                ], 0.0)
+                
+                # Buy/Sell Counts
+                metrics['total_buys_30_days'] = _safe_int_extract(cielo_data, [
+                    'buy_count', 'total_buys', 'buys_30d', 'buy_transactions', 'swaps_buy'
+                ], 0)
+                
+                metrics['total_sells_30_days'] = _safe_int_extract(cielo_data, [
+                    'sell_count', 'total_sells', 'sells_30d', 'sell_transactions', 'swaps_sell'
+                ], 0)
+                
+                # Average Holding Time (prioritize Cielo)
+                metrics['average_holding_time'] = _safe_float_extract(cielo_data, [
+                    'average_holding_time_hours', 'avg_hold_time_hours', 'average_holding_time_sec',
+                    'avg_hold_time', 'holding_time_avg', 'mean_holding_time'
+                ], 0.0)
+                
+                # Convert seconds to hours if needed
+                if metrics['average_holding_time'] > 200:  # Likely in seconds if > 200
+                    metrics['average_holding_time'] = metrics['average_holding_time'] / 3600.0
+                
+                # Average SOL per token - calculate from Cielo volume data
+                total_buy_amount = _safe_float_extract(cielo_data, [
+                    'total_buy_amount_usd', 'buy_volume_usd', 'total_volume_bought'
+                ], 0.0)
+                
+                total_tokens = _safe_int_extract(cielo_data, [
+                    'total_tokens', 'unique_tokens', 'tokens_traded', 'distinct_tokens'
+                ], 0)
+                
+                if total_buy_amount > 0 and total_tokens > 0:
+                    # Convert USD to SOL estimate (rough conversion)
+                    sol_price_estimate = 100.0  # Rough SOL price estimate
+                    total_sol_volume = total_buy_amount / sol_price_estimate
+                    metrics['avg_sol_buy_per_token'] = total_sol_volume / total_tokens
+                
+                # Average buys per token
+                if metrics['total_buys_30_days'] > 0 and total_tokens > 0:
+                    metrics['avg_buys_per_token'] = metrics['total_buys_30_days'] / total_tokens
+                
+                # Days since last trade - try to get from Cielo
+                last_trade_timestamp = _safe_int_extract(cielo_data, [
+                    'last_trade_timestamp', 'latest_transaction', 'last_activity', 'most_recent_trade'
+                ], 0)
+                
+                if last_trade_timestamp > 0:
+                    current_time = int(time.time())
+                    days_diff = (current_time - last_trade_timestamp) / 86400
+                    metrics['days_since_last_trade'] = max(0, int(days_diff))
+                
+                logger.info(f"Extracted Cielo metrics: ROI={metrics['roi_7_day']:.1f}%, "
+                           f"Profit_7d=${metrics['usd_profit_7_days']:.0f}, "
+                           f"Buys={metrics['total_buys_30_days']}, "
+                           f"Avg_Hold={metrics['average_holding_time']:.1f}h")
+        
+        # Fallback calculations only for missing critical data
+        if metrics['days_since_last_trade'] == 999:  # No Cielo data for this
+            metrics['days_since_last_trade'] = _calculate_days_since_last_trade_fallback(token_analysis)
+        
+        if metrics['avg_sol_buy_per_token'] == 0.0:  # Fallback calculation
+            metrics['avg_sol_buy_per_token'] = _calculate_actual_avg_sol_buy_fallback(token_analysis)
+        
+        if metrics['avg_buys_per_token'] == 0.0:  # Fallback calculation
+            metrics['avg_buys_per_token'] = _calculate_avg_buys_per_token_fallback(token_analysis)
+        
+        if metrics['average_holding_time'] == 0.0:  # Fallback calculation
+            metrics['average_holding_time'] = _calculate_average_holding_time_fallback(token_analysis)
+        
+        return metrics
+        
+    except Exception as e:
+        logger.error(f"Error extracting comprehensive Cielo metrics: {str(e)}")
+        # Return fallback calculations for all metrics
+        return _calculate_all_fallback_metrics(token_analysis)
+
+def _safe_float_extract(data: Dict[str, Any], field_names: List[str], default: float = 0.0) -> float:
+    """Safely extract float value from multiple possible field names."""
+    for field_name in field_names:
+        if field_name in data:
+            try:
+                value = data[field_name]
+                if value is not None:
+                    return float(value)
+            except (ValueError, TypeError):
+                continue
+    return default
+
+def _safe_int_extract(data: Dict[str, Any], field_names: List[str], default: int = 0) -> int:
+    """Safely extract integer value from multiple possible field names."""
+    for field_name in field_names:
+        if field_name in data:
+            try:
+                value = data[field_name]
+                if value is not None:
+                    return int(value)
+            except (ValueError, TypeError):
+                continue
+    return default
+
+def _calculate_days_since_last_trade_fallback(token_analysis: List[Dict[str, Any]]) -> int:
+    """Calculate days since the most recent trade using token analysis."""
+    try:
+        if not token_analysis:
+            return 999
+        
+        most_recent_timestamp = 0
+        
+        for token in token_analysis:
+            first_ts = token.get('first_timestamp', 0)
+            last_ts = token.get('last_timestamp', 0)
+            latest_ts = max(first_ts, last_ts)
+            if latest_ts > most_recent_timestamp:
+                most_recent_timestamp = latest_ts
+        
+        if most_recent_timestamp == 0:
+            return 999
+        
+        current_timestamp = int(time.time())
+        seconds_diff = current_timestamp - most_recent_timestamp
+        days_diff = int(seconds_diff / 86400)
+        
+        return max(0, days_diff)
+        
+    except Exception as e:
+        logger.error(f"Error calculating days since last trade: {str(e)}")
+        return 999
+
+def _calculate_actual_avg_sol_buy_fallback(token_analysis: List[Dict[str, Any]]) -> float:
     """Calculate the actual average SOL buy amount from token analysis."""
     try:
         sol_buys = []
@@ -213,63 +338,74 @@ def _calculate_actual_avg_sol_buy(token_analysis: List[Dict[str, Any]]) -> float
             return 0.0
         
         avg_buy = sum(sol_buys) / len(sol_buys)
-        return round(avg_buy, 3)  # Round to 3 decimal places
+        return round(avg_buy, 3)
         
     except Exception as e:
         logger.error(f"Error calculating actual average SOL buy: {str(e)}")
         return 0.0
 
-def _calculate_individualized_stop_loss(token_analysis: List[Dict[str, Any]], 
-                                      scoring_breakdown: Dict[str, Any]) -> int:
-    """Calculate wallet-specific stop loss based on their actual loss management behavior."""
+def _calculate_avg_buys_per_token_fallback(token_analysis: List[Dict[str, Any]]) -> float:
+    """Calculate the average number of buys per token."""
     try:
-        # Analyze their actual loss behavior
-        completed_trades = [t for t in token_analysis if t.get('trade_status') == 'completed']
-        losing_trades = [t for t in completed_trades if t.get('roi_percent', 0) < 0]
+        if not token_analysis:
+            return 0.0
         
-        if not losing_trades:
-            return -30  # Conservative default for wallets with no loss data
+        total_buys = 0
+        tokens_with_buys = 0
         
-        # Calculate their typical loss levels
-        loss_amounts = [abs(t.get('roi_percent', 0)) for t in losing_trades]
-        avg_loss = sum(loss_amounts) / len(loss_amounts)
-        max_loss = max(loss_amounts)
+        for token in token_analysis:
+            buy_count = token.get('buy_count', 0)
+            if buy_count > 0:
+                total_buys += buy_count
+                tokens_with_buys += 1
         
-        # Get their loss management metrics
-        metrics = scoring_breakdown.get('metrics_used', {})
-        heavy_loss_rate = metrics.get('heavy_loss_rate', 0)  # % of losses > 50%
-        quick_cut_losses = metrics.get('quick_cut_losses', 0)
+        if tokens_with_buys == 0:
+            return 0.0
         
-        # Determine appropriate stop loss based on their behavior
-        if heavy_loss_rate > 30:  # They let losses run too much
-            stop_loss = -25  # Tighter stop loss
-        elif heavy_loss_rate > 15:
-            stop_loss = -30
-        elif avg_loss > 40:  # Their average loss is high
-            stop_loss = -35
-        elif max_loss > 80:  # They've had some very large losses
-            stop_loss = -40
-        elif quick_cut_losses > 0:  # They cut losses quickly - can afford wider stop
-            stop_loss = -45
-        else:
-            stop_loss = -35  # Standard
-        
-        # Additional adjustments based on trader pattern
-        trader_pattern = _identify_detailed_trader_pattern({'token_analysis': token_analysis})
-        
-        if 'gem_hunter' in trader_pattern:
-            stop_loss -= 5  # Gem hunters need wider stops
-        elif 'scalper' in trader_pattern:
-            stop_loss += 5  # Scalpers need tighter stops
-        elif 'volatile' in trader_pattern:
-            stop_loss -= 3  # Volatile traders need slightly wider stops
-        
-        # Cap the range
-        return max(-50, min(-20, stop_loss))
+        avg_buys = total_buys / tokens_with_buys
+        return round(avg_buys, 1)
         
     except Exception as e:
-        logger.error(f"Error calculating individualized stop loss: {str(e)}")
-        return -35  # Safe default
+        logger.error(f"Error calculating avg buys per token: {str(e)}")
+        return 0.0
+
+def _calculate_average_holding_time_fallback(token_analysis: List[Dict[str, Any]]) -> float:
+    """Calculate average holding time from token analysis."""
+    try:
+        if not token_analysis:
+            return 0.0
+        
+        holding_times = []
+        for token in token_analysis:
+            hold_time = token.get('hold_time_hours', 0)
+            if hold_time > 0:
+                holding_times.append(hold_time)
+        
+        if not holding_times:
+            return 0.0
+        
+        avg_holding_time = sum(holding_times) / len(holding_times)
+        return round(avg_holding_time, 1)
+        
+    except Exception as e:
+        logger.error(f"Error calculating average holding time: {str(e)}")
+        return 0.0
+
+def _calculate_all_fallback_metrics(token_analysis: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Calculate all metrics using fallback methods when Cielo data is unavailable."""
+    return {
+        'roi_7_day': 0.0,  # Cannot calculate without historical price data
+        'median_roi_7_day': 0.0,  # Cannot calculate without historical price data
+        'usd_profit_2_days': 0.0,  # Cannot calculate without USD conversion
+        'usd_profit_7_days': 0.0,  # Cannot calculate without USD conversion
+        'usd_profit_30_days': 0.0,  # Cannot calculate without USD conversion
+        'total_buys_30_days': sum(token.get('buy_count', 0) for token in token_analysis),
+        'total_sells_30_days': sum(token.get('sell_count', 0) for token in token_analysis),
+        'avg_sol_buy_per_token': _calculate_actual_avg_sol_buy_fallback(token_analysis),
+        'avg_buys_per_token': _calculate_avg_buys_per_token_fallback(token_analysis),
+        'average_holding_time': _calculate_average_holding_time_fallback(token_analysis),
+        'days_since_last_trade': _calculate_days_since_last_trade_fallback(token_analysis)
+    }
 
 def _identify_detailed_trader_pattern(analysis: Dict[str, Any]) -> str:
     """Identify detailed trader pattern with specific characteristics."""
@@ -291,14 +427,11 @@ def _identify_detailed_trader_pattern(analysis: Dict[str, Any]) -> str:
         avg_roi = sum(rois) / len(rois)
         avg_hold_time = sum(hold_times) / len(hold_times)
         max_roi = max(rois)
-        min_roi = min(rois)
         roi_std = (sum((roi - avg_roi) ** 2 for roi in rois) / len(rois)) ** 0.5 if len(rois) > 1 else 0
         
         # Count different outcome types
         moonshots = sum(1 for roi in rois if roi >= 400)  # 5x+
         big_wins = sum(1 for roi in rois if 100 <= roi < 400)  # 2x-5x
-        small_wins = sum(1 for roi in rois if 0 < roi < 100)
-        small_losses = sum(1 for roi in rois if -50 < roi <= 0)
         heavy_losses = sum(1 for roi in rois if roi <= -50)
         
         # Detailed pattern identification
@@ -391,8 +524,8 @@ def _generate_individualized_strategy_reasoning(analysis: Dict[str, Any]) -> str
             
             # Add TP strategy explanation
             tp1 = strategy.get('tp1_percent', 0)
-            tp3 = strategy.get('tp3_percent', 0)
-            reasoning_parts.append(f"Use custom TPs: {tp1}%-{tp3}% targets")
+            tp2 = strategy.get('tp2_percent', 0)
+            reasoning_parts.append(f"Use custom TPs: {tp1}%-{tp2}% targets")
         
         return " | ".join(reasoning_parts)
         
@@ -476,28 +609,29 @@ def _create_failed_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
     error_type = analysis.get('error_type', 'UNKNOWN_ERROR')
     error_message = analysis.get('error', 'Unknown error')
     
-    # Create row with specific error information
+    # Create row with error information using new structure
     row = {
         'wallet_address': wallet_address,
-        'follow_wallet': 'NO',
-        'follow_sells': 'NO',
-        'tp1_percent': 0,
-        'tp2_percent': 0,
-        'tp3_percent': 0,
-        'stop_loss_percent': -35,
-        'avg_sol_buy': 0.0,
         'composite_score': 0,
-        'risk_adjusted_score': 0,
-        'distribution_score': 0,
-        'discipline_score': 0,
-        'market_impact_score': 0,
-        'consistency_score': 0,
-        'unique_tokens_traded': analysis.get('unique_tokens_found', 0),
-        'tokens_analyzed': 0,
-        'volume_tier': f'Failed: {error_type}',
+        'days_since_last_trade': 999,
+        'roi': 0.0,
+        'median_roi': 0.0,
+        'usd_profit_2_days': 0.0,
+        'usd_profit_7_days': 0.0,
+        'usd_profit_30_days': 0.0,
+        'copy_wallet': 'NO',
+        'copy_sells': 'NO',
+        'tp_1': 0,
+        'tp_2': 0,
+        'stop_loss': -35,
+        'avg_sol_buy_per_token': 0.0,
+        'avg_buys_per_token': 0.0,
+        'average_holding_time': 0.0,
+        'total_buys_30_days': 0,
+        'total_sells_30_days': 0,
         'trader_pattern': 'failed_analysis',
-        'strategy_reasoning': f"Analysis failed: {error_message}",
-        'decision_reasoning': f"Cannot analyze: {error_type} - {error_message}"
+        'strategy_reason': f"Analysis failed: {error_message}",
+        'decision_reason': f"Cannot analyze: {error_type} - {error_message}"
     }
     
     return row
@@ -506,25 +640,26 @@ def _create_error_row(analysis: Dict[str, Any], error_msg: str) -> Dict[str, Any
     """Create minimal error row when row creation fails."""
     return {
         'wallet_address': analysis.get('wallet_address', ''),
-        'follow_wallet': 'NO',
-        'follow_sells': 'NO',
-        'tp1_percent': 0,
-        'tp2_percent': 0,
-        'tp3_percent': 0,
-        'stop_loss_percent': -35,
-        'avg_sol_buy': 0.0,
         'composite_score': 0,
-        'risk_adjusted_score': 0,
-        'distribution_score': 0,
-        'discipline_score': 0,
-        'market_impact_score': 0,
-        'consistency_score': 0,
-        'unique_tokens_traded': 0,
-        'tokens_analyzed': 0,
-        'volume_tier': 'Error',
+        'days_since_last_trade': 999,
+        'roi': 0.0,
+        'median_roi': 0.0,
+        'usd_profit_2_days': 0.0,
+        'usd_profit_7_days': 0.0,
+        'usd_profit_30_days': 0.0,
+        'copy_wallet': 'NO',
+        'copy_sells': 'NO',
+        'tp_1': 0,
+        'tp_2': 0,
+        'stop_loss': -35,
+        'avg_sol_buy_per_token': 0.0,
+        'avg_buys_per_token': 0.0,
+        'average_holding_time': 0.0,
+        'total_buys_30_days': 0,
+        'total_sells_30_days': 0,
         'trader_pattern': 'error',
-        'strategy_reasoning': f'Row creation error: {error_msg}',
-        'decision_reasoning': f'Processing error: {error_msg}'
+        'strategy_reason': f'Row creation error: {error_msg}',
+        'decision_reason': f'Processing error: {error_msg}'
     }
 
 def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
@@ -577,63 +712,6 @@ def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
                 f.write(f"({follow_wallet_count/len(successful_analyses)*100:.1f}%)\n")
                 f.write(f"Follow Sells (YES): {follow_sells_count}/{len(successful_analyses)} ")
                 f.write(f"({follow_sells_count/len(successful_analyses)*100:.1f}%)\n\n")
-                
-                # Show Follow Wallet YES but Follow Sells NO cases
-                follow_wallet_only = sum(1 for a in successful_analyses 
-                                       if a.get('binary_decisions', {}).get('follow_wallet', False) and 
-                                       not a.get('binary_decisions', {}).get('follow_sells', False))
-                f.write(f"Follow Wallet Only (YES/NO): {follow_wallet_only}/{len(successful_analyses)} ")
-                f.write(f"({follow_wallet_only/len(successful_analyses)*100:.1f}%)\n\n")
-            
-            # Top performers
-            if successful_analyses:
-                top_performers = sorted(successful_analyses, 
-                                      key=lambda x: x.get('composite_score', 0), reverse=True)[:10]
-                
-                f.write("🏆 TOP 10 PERFORMERS\n")
-                f.write("-" * 40 + "\n")
-                
-                for i, analysis in enumerate(top_performers, 1):
-                    wallet = analysis['wallet_address']
-                    score = analysis.get('composite_score', 0)
-                    binary_decisions = analysis.get('binary_decisions', {})
-                    strategy = analysis.get('strategy_recommendation', {})
-                    
-                    follow_wallet = binary_decisions.get('follow_wallet', False)
-                    follow_sells = binary_decisions.get('follow_sells', False)
-                    
-                    f.write(f"\n{i}. {wallet[:8]}...{wallet[-4:]}\n")
-                    f.write(f"   Score: {score:.1f}/100\n")
-                    f.write(f"   Follow Wallet: {'✅ YES' if follow_wallet else '❌ NO'}\n")
-                    f.write(f"   Follow Sells: {'✅ YES' if follow_sells else '❌ NO'}\n")
-                    f.write(f"   TP Strategy: {strategy.get('tp1_percent', 0)}% / ")
-                    f.write(f"{strategy.get('tp2_percent', 0)}% / {strategy.get('tp3_percent', 0)}%\n")
-                    f.write(f"   Stop Loss: {strategy.get('stop_loss_percent', -35)}%\n")
-                    f.write(f"   Reasoning: {strategy.get('reasoning', 'N/A')}\n")
-            
-            # Error analysis
-            if failed_analyses:
-                f.write(f"\n\n❌ FAILED ANALYSES ({len(failed_analyses)})\n")
-                f.write("-" * 40 + "\n")
-                
-                error_counts = {}
-                for analysis in failed_analyses:
-                    error_type = analysis.get('error_type', 'UNKNOWN')
-                    error_counts[error_type] = error_counts.get(error_type, 0) + 1
-                
-                for error_type, count in error_counts.items():
-                    f.write(f"{error_type}: {count} wallets\n")
-                
-                # Show first 5 failed analyses
-                f.write("\nFirst 5 Failed Analyses:\n")
-                for analysis in failed_analyses[:5]:
-                    wallet = analysis.get('wallet_address', 'Unknown')
-                    error = analysis.get('error', 'Unknown error')
-                    f.write(f"• {wallet[:8]}...{wallet[-4:]}: {error}\n")
-            
-            f.write(f"\n" + "=" * 80 + "\n")
-            f.write("END OF ZEUS ANALYSIS SUMMARY\n")
-            f.write("=" * 80 + "\n")
         
         logger.info(f"✅ Exported Zeus summary to: {output_file}")
         return True
@@ -674,7 +752,7 @@ def export_bot_config_json(results: Dict[str, Any], output_file: str) -> bool:
                 'follow_wallets': len(follow_wallets),
                 'analysis_period_days': 30,
                 'enhanced_exit_analysis': True,
-                'individualized_analysis': True
+                'comprehensive_cielo_integration': True
             },
             'wallets': []
         }
@@ -685,13 +763,7 @@ def export_bot_config_json(results: Dict[str, Any], output_file: str) -> bool:
                 'composite_score': analysis.get('composite_score', 0),
                 'binary_decisions': analysis.get('binary_decisions', {}),
                 'strategy': analysis.get('strategy_recommendation', {}),
-                'analysis_timestamp': analysis.get('analysis_timestamp', ''),
-                'individualized_insights': {
-                    'trader_pattern': _identify_detailed_trader_pattern(analysis),
-                    'avg_sol_buy': _calculate_actual_avg_sol_buy(analysis.get('token_analysis', [])),
-                    'strategy_reasoning': _generate_individualized_strategy_reasoning(analysis),
-                    'decision_reasoning': _generate_individualized_decision_reasoning(analysis)
-                }
+                'analysis_timestamp': analysis.get('analysis_timestamp', '')
             }
             bot_config['wallets'].append(wallet_config)
         
@@ -701,7 +773,7 @@ def export_bot_config_json(results: Dict[str, Any], output_file: str) -> bool:
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(bot_config, f, indent=2, ensure_ascii=False)
         
-        logger.info(f"✅ Exported individualized bot configuration to: {output_file}")
+        logger.info(f"✅ Exported bot configuration to: {output_file}")
         return True
         
     except Exception as e:
