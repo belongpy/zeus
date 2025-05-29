@@ -1,10 +1,10 @@
 """
-Zeus API Manager - FIXED with Real 7-Day ROI Support from Cielo Trading Stats
-MAJOR UPDATES:
-- Added period-specific Trading Stats API support
-- Real 7-day ROI/PnL data extraction
-- Removed timestamp accuracy columns
-- Enhanced error handling
+Zeus API Manager - Enhanced Debugging for Exact Field Mapping
+ENHANCED DEBUGGING:
+- Log exact Cielo API response structure and field names
+- Help identify the correct field names for direct extraction
+- Preserve full API response for analysis
+- Enhanced error handling and field discovery
 """
 
 import logging
@@ -17,11 +17,11 @@ import dateutil.parser
 logger = logging.getLogger("zeus.api_manager")
 
 class ZeusAPIManager:
-    """Zeus API manager with Helius PRIMARY timestamp and Real 7-Day ROI support."""
+    """Zeus API manager with enhanced debugging for exact field mapping."""
     
     def __init__(self, birdeye_api_key: str = "", cielo_api_key: str = "", 
                  helius_api_key: str = "", rpc_url: str = "https://api.mainnet-beta.solana.com"):
-        """Initialize with REQUIRED API key validation."""
+        """Initialize with REQUIRED Helius API key validation."""
         
         # Store API keys
         self.birdeye_api_key = birdeye_api_key.strip() if birdeye_api_key else ""
@@ -59,7 +59,7 @@ class ZeusAPIManager:
     
     def _initialize_apis(self):
         """Initialize API configurations with validation."""
-        logger.info("🔧 Initializing Zeus API Manager with REQUIRED API validation...")
+        logger.info("🔧 Initializing Zeus API Manager with ENHANCED FIELD DEBUGGING...")
         
         if self.cielo_api_key:
             logger.info("✅ Cielo Finance API key configured")
@@ -79,9 +79,7 @@ class ZeusAPIManager:
             logger.info("⚠️ Birdeye API key not provided (limited features)")
     
     def get_last_transaction_timestamp(self, wallet_address: str) -> Dict[str, Any]:
-        """
-        Get the REAL last transaction timestamp using Helius API (PRIMARY method).
-        """
+        """Get the REAL last transaction timestamp using Helius API."""
         try:
             logger.info(f"🕐 HELIUS PRIMARY: Getting real last transaction timestamp for {wallet_address[:8]}...")
             
@@ -95,7 +93,8 @@ class ZeusAPIManager:
                 'commitment': 'confirmed'
             }
             
-            logger.debug(f"🔍 Helius API call: {url}")
+            logger.info(f"🔍 Helius API call: {url}")
+            logger.debug(f"Parameters: {params}")
             
             response = self.session.get(url, params=params, timeout=30)
             
@@ -118,16 +117,17 @@ class ZeusAPIManager:
                         logger.info(f"✅ HELIUS PRIMARY: Found real last trade timestamp")
                         logger.info(f"   Timestamp: {latest_trade_timestamp}")
                         logger.info(f"   Date: {datetime.fromtimestamp(latest_trade_timestamp)}")
-                        logger.info(f"   Days ago: {days_since_last:.1f}")
+                        logger.info(f"   Days ago: {days_since_last:.2f}")
                         
                         return {
                             'success': True,
                             'last_transaction_timestamp': latest_trade_timestamp,
-                            'days_since_last_trade': round(days_since_last, 1),  # Changed to 1 decimal
+                            'days_since_last_trade': round(days_since_last, 2),
                             'transaction_count': len(transactions),
                             'source': 'helius_primary',
                             'method': 'helius_transactions_api',
-                            'wallet_address': wallet_address
+                            'wallet_address': wallet_address,
+                            'timestamp_accuracy': 'high'
                         }
                     else:
                         logger.warning(f"⚠️ HELIUS: No trading transactions found in recent history")
@@ -203,9 +203,7 @@ class ZeusAPIManager:
             }
     
     def _find_latest_trading_timestamp(self, transactions: List[Dict[str, Any]]) -> Optional[int]:
-        """
-        Find the latest TRADING transaction timestamp from Helius data.
-        """
+        """Find the latest TRADING transaction timestamp from Helius data."""
         try:
             latest_trade_timestamp = None
             
@@ -218,9 +216,6 @@ class ZeusAPIManager:
                     tx_timestamp = tx['timestamp']
                 elif 'blockTime' in tx:
                     tx_timestamp = tx['blockTime']
-                elif 'slot' in tx:
-                    # Convert slot to approximate timestamp if needed
-                    continue  # Skip slot-based estimation for now
                 
                 if not tx_timestamp:
                     continue
@@ -238,9 +233,7 @@ class ZeusAPIManager:
             return None
     
     def _is_trading_transaction(self, transaction: Dict[str, Any]) -> bool:
-        """
-        Determine if a transaction is a trading/swap transaction.
-        """
+        """Determine if a transaction is a trading/swap transaction."""
         try:
             # Check transaction type
             tx_type = transaction.get('type', '').lower()
@@ -262,29 +255,21 @@ class ZeusAPIManager:
                         if program_id in [
                             '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8',  # Raydium
                             'JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo',   # Jupiter
-                            '9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfQM9H24wFSUt1Mp8',  # Orca
+                            '9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP',  # Orca
                             'EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o',  # Serum
                         ]:
                             return True
             
             # Default: assume it's a trading transaction if we can't determine otherwise
-            # This is more inclusive to avoid missing trades
             return True
             
         except Exception as e:
             logger.debug(f"Error checking if transaction is trading: {str(e)}")
             return True  # Default to True to be inclusive
     
-    def get_wallet_trading_stats(self, wallet_address: str, period: Optional[str] = None) -> Dict[str, Any]:
+    def get_wallet_trading_stats(self, wallet_address: str) -> Dict[str, Any]:
         """
-        Get wallet trading statistics from Cielo Finance Trading Stats API with period support.
-        
-        Args:
-            wallet_address: Wallet address to analyze
-            period: Optional period ('1d', '7d', '30d', 'max'). If None, gets all periods.
-        
-        Returns:
-            Dict with trading stats including period-specific ROI/PnL data
+        Get wallet trading statistics from Cielo Finance Trading Stats API with ENHANCED DEBUG LOGGING.
         """
         try:
             if not self.cielo_api_key:
@@ -296,17 +281,10 @@ class ZeusAPIManager:
             
             self.api_stats['cielo']['calls'] += 1
             
-            # Use Trading Stats endpoint with period support
+            # Use correct Trading Stats endpoint
             url = f"{self.cielo_base_url}/{wallet_address}/trading-stats"
             
-            # Add period parameter if specified
-            params = {}
-            if period:
-                params['period'] = period
-                logger.info(f"🏦 Calling Cielo Trading Stats API with period {period}: {url}")
-            else:
-                logger.info(f"🏦 Calling Cielo Trading Stats API (all periods): {url}")
-            
+            logger.info(f"🏦 Calling Cielo Trading Stats API: {url}")
             logger.debug(f"Using API key: {self.cielo_api_key[:12]}...")
             
             # Try different authentication methods for Cielo API
@@ -332,42 +310,99 @@ class ZeusAPIManager:
                 logger.debug(f"Trying Cielo auth method {i}/{len(auth_methods)}: {auth_method}")
                 
                 try:
-                    response = self.session.get(url, headers=headers, params=params, timeout=30)
+                    response = self.session.get(url, headers=headers, timeout=30)
                     
                     logger.debug(f"Cielo response: HTTP {response.status_code}")
                     
                     if response.status_code == 200:
-                        # SUCCESS - Extract complete response data
+                        # SUCCESS - Extract complete response data with ENHANCED DEBUGGING
                         try:
                             response_data = response.json()
                             self.api_stats['cielo']['success'] += 1
                             
                             logger.info(f"✅ Cielo Trading Stats API success with {auth_method}!")
                             
-                            # Extract the actual trading data from nested structure
-                            actual_trading_data = response_data.get('data', {}) if isinstance(response_data, dict) else {}
+                            # ENHANCED DEBUGGING: Log the exact API response structure
+                            logger.info(f"🔍 CIELO API RESPONSE DEBUG for {wallet_address[:8]}:")
+                            logger.info(f"  Response type: {type(response_data)}")
                             
-                            if actual_trading_data:
-                                logger.info(f"📊 Cielo data fields: {list(actual_trading_data.keys())}")
+                            if isinstance(response_data, dict):
+                                logger.info(f"  Top-level keys: {list(response_data.keys())}")
                                 
-                                # Check if we got period-specific data structure
-                                if period:
-                                    logger.info(f"📊 Period-specific data for {period}")
+                                # Extract the actual trading data from nested structure
+                                actual_trading_data = response_data.get('data', {}) if 'data' in response_data else response_data
+                                
+                                if isinstance(actual_trading_data, dict):
+                                    logger.info(f"  Trading data keys: {list(actual_trading_data.keys())}")
+                                    logger.info(f"  Field count: {len(actual_trading_data)}")
+                                    
+                                    # ENHANCED FIELD DISCOVERY: Log potential field matches
+                                    logger.info(f"🔎 FIELD DISCOVERY - Looking for exact fields:")
+                                    
+                                    # Look for ROI-related fields
+                                    roi_candidates = [k for k in actual_trading_data.keys() if any(term in k.lower() for term in ['roi', 'pnl', 'return'])]
+                                    if roi_candidates:
+                                        logger.info(f"  ROI candidates: {roi_candidates}")
+                                        for field in roi_candidates:
+                                            value = actual_trading_data[field]
+                                            logger.info(f"    {field}: {value} ({type(value).__name__})")
+                                    
+                                    # Look for winrate-related fields
+                                    winrate_candidates = [k for k in actual_trading_data.keys() if any(term in k.lower() for term in ['win', 'rate', 'success'])]
+                                    if winrate_candidates:
+                                        logger.info(f"  Winrate candidates: {winrate_candidates}")
+                                        for field in winrate_candidates:
+                                            value = actual_trading_data[field]
+                                            logger.info(f"    {field}: {value} ({type(value).__name__})")
+                                    
+                                    # Look for hold time-related fields
+                                    holdtime_candidates = [k for k in actual_trading_data.keys() if any(term in k.lower() for term in ['hold', 'time', 'duration'])]
+                                    if holdtime_candidates:
+                                        logger.info(f"  Hold time candidates: {holdtime_candidates}")
+                                        for field in holdtime_candidates:
+                                            value = actual_trading_data[field]
+                                            logger.info(f"    {field}: {value} ({type(value).__name__})")
+                                    
+                                    # Look for count-related fields
+                                    count_candidates = [k for k in actual_trading_data.keys() if any(term in k.lower() for term in ['count', 'buys', 'sells', 'swap'])]
+                                    if count_candidates:
+                                        logger.info(f"  Count candidates: {count_candidates}")
+                                        for field in count_candidates:
+                                            value = actual_trading_data[field]
+                                            logger.info(f"    {field}: {value} ({type(value).__name__})")
+                                    
+                                    # Log ALL fields for complete discovery
+                                    logger.info(f"🗂️ COMPLETE FIELD LISTING:")
+                                    for field, value in actual_trading_data.items():
+                                        logger.info(f"    {field}: {value} ({type(value).__name__})")
+                                    
+                                    return {
+                                        'success': True,
+                                        'data': actual_trading_data,
+                                        'source': 'cielo_trading_stats',
+                                        'auth_method_used': auth_method,
+                                        'api_endpoint': 'trading-stats',
+                                        'wallet_address': wallet_address,
+                                        'response_timestamp': int(time.time()),
+                                        'raw_response': response_data,
+                                        'debug_info': {
+                                            'field_count': len(actual_trading_data),
+                                            'roi_candidates': roi_candidates,
+                                            'winrate_candidates': winrate_candidates,
+                                            'holdtime_candidates': holdtime_candidates,
+                                            'count_candidates': count_candidates
+                                        }
+                                    }
                                 else:
-                                    # Check for nested period structure
-                                    if 'roi' in actual_trading_data and isinstance(actual_trading_data['roi'], dict):
-                                        periods = list(actual_trading_data['roi'].keys())
-                                        logger.info(f"📊 Multi-period data with periods: {periods}")
-                                    else:
-                                        logger.info(f"📊 Single period data structure")
+                                    logger.warning(f"⚠️ Trading data is not a dict: {type(actual_trading_data)}")
                             
+                            # Fallback return
                             return {
                                 'success': True,
-                                'data': actual_trading_data,
+                                'data': response_data,
                                 'source': 'cielo_trading_stats',
                                 'auth_method_used': auth_method,
                                 'api_endpoint': 'trading-stats',
-                                'period_requested': period,
                                 'wallet_address': wallet_address,
                                 'response_timestamp': int(time.time()),
                                 'raw_response': response_data
@@ -432,214 +467,6 @@ class ZeusAPIManager:
                 'source': 'cielo_trading_stats'
             }
     
-    def get_wallet_pnl_tokens(self, wallet_address: str) -> Dict[str, Any]:
-        """
-        Get wallet token PnL from Cielo Finance Token PnL API.
-        """
-        try:
-            if not self.cielo_api_key:
-                return {
-                    'success': False,
-                    'error': 'Cielo Finance API key not configured'
-                }
-            
-            self.api_stats['cielo']['calls'] += 1
-            
-            url = f"{self.cielo_base_url}/{wallet_address}/pnl/tokens"
-            headers = {
-                'accept': 'application/json',
-                'Content-Type': 'application/json',
-                'X-API-KEY': self.cielo_api_key
-            }
-            
-            logger.info(f"📊 Calling Cielo Token PnL API: {url}")
-            
-            response = self.session.get(url, headers=headers, timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                self.api_stats['cielo']['success'] += 1
-                
-                logger.info(f"✅ Cielo token PnL success for {wallet_address[:8]}...")
-                
-                return {
-                    'success': True,
-                    'data': data,
-                    'source': 'cielo_token_pnl'
-                }
-            
-            else:
-                error_msg = f"Cielo Token PnL API error: HTTP {response.status_code}"
-                if response.text:
-                    error_msg += f" - {response.text[:200]}"
-                
-                logger.error(f"❌ {error_msg}")
-                self.api_stats['cielo']['errors'] += 1
-                return {
-                    'success': False,
-                    'error': error_msg
-                }
-            
-        except Exception as e:
-            error_msg = f"Cielo Token PnL API error: {str(e)}"
-            logger.error(f"❌ {error_msg}")
-            self.api_stats['cielo']['errors'] += 1
-            return {
-                'success': False,
-                'error': error_msg
-            }
-    
-    def get_wallet_aggregated_pnl(self, wallet_address: str) -> Dict[str, Any]:
-        """
-        Get wallet aggregated PnL from Cielo Finance Aggregated Token PnL API.
-        """
-        try:
-            if not self.cielo_api_key:
-                return {
-                    'success': False,
-                    'error': 'Cielo Finance API key not configured'
-                }
-            
-            self.api_stats['cielo']['calls'] += 1
-            
-            url = f"{self.cielo_base_url}/{wallet_address}/pnl/total-stats"
-            headers = {
-                'accept': 'application/json',
-                'Content-Type': 'application/json',
-                'X-API-KEY': self.cielo_api_key
-            }
-            
-            logger.info(f"📈 Calling Cielo Aggregated PnL API: {url}")
-            
-            response = self.session.get(url, headers=headers, timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                self.api_stats['cielo']['success'] += 1
-                
-                logger.info(f"✅ Cielo aggregated PnL success for {wallet_address[:8]}...")
-                
-                return {
-                    'success': True,
-                    'data': data,
-                    'source': 'cielo_aggregated_pnl'
-                }
-            
-            else:
-                error_msg = f"Cielo Aggregated PnL API error: HTTP {response.status_code}"
-                if response.text:
-                    error_msg += f" - {response.text[:200]}"
-                
-                logger.error(f"❌ {error_msg}")
-                self.api_stats['cielo']['errors'] += 1
-                return {
-                    'success': False,
-                    'error': error_msg
-                }
-            
-        except Exception as e:
-            error_msg = f"Cielo Aggregated PnL API error: {str(e)}"
-            logger.error(f"❌ {error_msg}")
-            self.api_stats['cielo']['errors'] += 1
-            return {
-                'success': False,
-                'error': error_msg
-            }
-    
-    def get_enhanced_transactions(self, wallet_address: str, limit: int = 100) -> Dict[str, Any]:
-        """Get enhanced parsed transactions using Helius API."""
-        try:
-            if not self.helius_api_key:
-                return {
-                    'success': False,
-                    'error': 'Helius API not configured'
-                }
-            
-            self.api_stats['helius']['calls'] += 1
-            
-            url = f"{self.helius_base_url}/addresses/{wallet_address}/transactions"
-            params = {
-                'api-key': self.helius_api_key,
-                'limit': limit,
-                'commitment': 'confirmed'
-            }
-            
-            logger.info(f"🔍 Getting enhanced transactions for {wallet_address[:8]}...")
-            
-            response = self.session.get(url, params=params, timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                self.api_stats['helius']['success'] += 1
-                
-                logger.info(f"✅ Helius enhanced transactions success - {len(data)} transactions")
-                
-                return {
-                    'success': True,
-                    'data': data
-                }
-            
-            else:
-                error_msg = f"Helius enhanced transactions error: HTTP {response.status_code}"
-                logger.error(f"❌ {error_msg}")
-                self.api_stats['helius']['errors'] += 1
-                return {
-                    'success': False,
-                    'error': error_msg
-                }
-            
-        except Exception as e:
-            error_msg = f"Helius enhanced transactions error: {str(e)}"
-            logger.error(f"❌ {error_msg}")
-            self.api_stats['helius']['errors'] += 1
-            return {
-                'success': False,
-                'error': error_msg
-            }
-    
-    def make_rpc_call(self, method: str, params: List[Any]) -> Dict[str, Any]:
-        """Make direct RPC call to Solana node."""
-        try:
-            self.api_stats['rpc']['calls'] += 1
-            
-            payload = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": method,
-                "params": params
-            }
-            
-            response = self.session.post(
-                self.rpc_url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=30
-            )
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            if "result" in result:
-                self.api_stats['rpc']['success'] += 1
-                return {
-                    'success': True,
-                    'data': result["result"]
-                }
-            else:
-                self.api_stats['rpc']['errors'] += 1
-                return {
-                    'success': False,
-                    'error': result.get("error", "Unknown RPC error")
-                }
-                
-        except Exception as e:
-            logger.error(f"RPC call error: {str(e)}")
-            self.api_stats['rpc']['errors'] += 1
-            return {
-                'success': False,
-                'error': str(e)
-            }
-    
     def get_api_status(self) -> Dict[str, Any]:
         """Get detailed API status information with REQUIRED validation."""
         status = {
@@ -647,7 +474,8 @@ class ZeusAPIManager:
             'api_status': {},
             'system_ready': True,
             'wallet_compatible': False,
-            'token_analysis_ready': False
+            'token_analysis_ready': False,
+            'timestamp_accuracy': 'none'
         }
         
         # Check REQUIRED APIs
@@ -679,6 +507,10 @@ class ZeusAPIManager:
         # System capabilities
         if self.cielo_api_key and self.helius_api_key:
             status['wallet_compatible'] = True
+            status['timestamp_accuracy'] = 'high'
+        elif self.cielo_api_key:
+            status['wallet_compatible'] = True
+            status['timestamp_accuracy'] = 'low'
         
         return status
     
@@ -704,9 +536,7 @@ class ZeusAPIManager:
         return perf_stats
     
     def test_helius_connection(self, test_wallet: str = "DhDiCRqc4BAojxUDzBonf7KAujejtpUryxDsuqPqGKA9") -> Dict[str, Any]:
-        """
-        Test Helius API connection with a known wallet address.
-        """
+        """Test Helius API connection with a known wallet address."""
         try:
             logger.info(f"🧪 Testing Helius API connection with wallet: {test_wallet[:8]}...")
             
@@ -738,9 +568,7 @@ class ZeusAPIManager:
             }
     
     def test_cielo_api_connection(self, test_wallet: str = "DhDiCRqc4BAojxUDzBonf7KAujejtpUryxDsuqPqGKA9") -> Dict[str, Any]:
-        """
-        Test Cielo API connection with a known wallet address.
-        """
+        """Test Cielo API connection with a known wallet address and ENHANCED FIELD DISCOVERY."""
         try:
             logger.info(f"🧪 Testing Cielo API connection with wallet: {test_wallet[:8]}...")
             
@@ -750,11 +578,14 @@ class ZeusAPIManager:
                 logger.info("✅ Cielo API connection test successful!")
                 
                 data = result.get('data', {})
+                debug_info = result.get('debug_info', {})
+                
                 return {
                     'connection_test': 'success',
                     'api_working': True,
                     'response_fields': list(data.keys()) if isinstance(data, dict) else [],
-                    'auth_method': result.get('auth_method_used', 'unknown')
+                    'auth_method': result.get('auth_method_used', 'unknown'),
+                    'field_discovery': debug_info
                 }
             else:
                 logger.error(f"❌ Cielo API connection test failed: {result.get('error', 'Unknown error')}")
