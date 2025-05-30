@@ -10,6 +10,7 @@ MAJOR UPDATES:
 - Enhanced pattern recognition with corrected thresholds (5min/24hr)
 - Exit behavior inference to understand actual vs final performance
 - Comprehensive validation and inflation detection
+- Performance monitoring for API costs and response times
 """
 
 import os
@@ -17,6 +18,7 @@ import sys
 import argparse
 import json
 import logging
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -85,6 +87,13 @@ def load_config() -> Dict[str, Any]:
             "enable_exit_behavior_inference": True,
             "enable_inflation_detection": True,
             "enable_auto_correction": True
+        },
+        "performance": {
+            "enable_monitoring": True,
+            "track_api_costs": True,
+            "track_response_times": True,
+            "cost_alert_threshold": 1000,
+            "performance_log_interval": 10
         },
         "output": {
             "default_csv": "zeus_analysis.csv",
@@ -176,6 +185,55 @@ def validate_required_apis(api_keys: Dict[str, str]) -> Dict[str, Any]:
         'configured_recommended': [api for api in recommended_apis if api_keys.get(api, '').strip()]
     }
 
+class PerformanceMonitor:
+    """Monitor API performance and costs."""
+    
+    def __init__(self):
+        self.start_time = time.time()
+        self.api_calls = {}
+        self.total_cost = 0
+        self.response_times = []
+    
+    def record_api_call(self, api_name: str, cost: int, response_time: float, success: bool):
+        """Record an API call for monitoring."""
+        if api_name not in self.api_calls:
+            self.api_calls[api_name] = {
+                'calls': 0, 'cost': 0, 'success': 0, 'errors': 0, 'avg_response_time': 0
+            }
+        
+        self.api_calls[api_name]['calls'] += 1
+        self.api_calls[api_name]['cost'] += cost
+        self.total_cost += cost
+        self.response_times.append(response_time)
+        
+        if success:
+            self.api_calls[api_name]['success'] += 1
+        else:
+            self.api_calls[api_name]['errors'] += 1
+        
+        # Update average response time
+        existing_times = self.api_calls[api_name].get('response_times', [])
+        existing_times.append(response_time)
+        self.api_calls[api_name]['response_times'] = existing_times[-10:]  # Keep last 10
+        self.api_calls[api_name]['avg_response_time'] = sum(existing_times) / len(existing_times)
+    
+    def get_performance_report(self) -> Dict[str, Any]:
+        """Get performance monitoring report."""
+        total_time = time.time() - self.start_time
+        total_calls = sum(api['calls'] for api in self.api_calls.values())
+        
+        return {
+            'session_duration': total_time,
+            'total_api_calls': total_calls,
+            'total_cost': self.total_cost,
+            'avg_response_time': sum(self.response_times) / len(self.response_times) if self.response_times else 0,
+            'api_breakdown': self.api_calls,
+            'calls_per_second': total_calls / total_time if total_time > 0 else 0
+        }
+
+# Global performance monitor
+performance_monitor = PerformanceMonitor()
+
 class ZeusCLI:
     """Zeus CLI Application with Corrected Exit Analysis and Realistic TP/SL."""
     
@@ -194,6 +252,7 @@ Examples:
   zeus analyze --wallets wallets.txt
   zeus analyze --wallet 7xG8...k9mP --output custom_analysis.csv
   zeus status
+  zeus performance
             """
         )
         
@@ -216,6 +275,9 @@ Examples:
         
         # Status command
         status_parser = subparsers.add_parser("status", help="Check system status")
+        
+        # Performance command
+        perf_parser = subparsers.add_parser("performance", help="Show performance metrics")
         
         return parser
     
@@ -257,6 +319,13 @@ Examples:
                     api_name = api.replace('_api_key', '').upper()
                     print(f"   • {api_name} API Key - Enhanced features", flush=True)
         
+        # Show performance summary if available
+        perf_report = performance_monitor.get_performance_report()
+        if perf_report['total_api_calls'] > 0:
+            print(f"\n📈 SESSION PERFORMANCE:", flush=True)
+            print(f"   API Calls: {perf_report['total_api_calls']}, Cost: {perf_report['total_cost']} credits", flush=True)
+            print(f"   Avg Response: {perf_report['avg_response_time']:.2f}s", flush=True)
+        
         print("\nSelect an option:", flush=True)
         print("\n🔧 CONFIGURATION:", flush=True)
         print("1. Configure API Keys", flush=True)
@@ -267,14 +336,16 @@ Examples:
         print("5. Single Wallet Analysis", flush=True)
         print("\n🔍 UTILITIES:", flush=True)
         print("6. System Status", flush=True)
-        print("7. Help & Corrected Features", flush=True)
+        print("7. Performance Metrics", flush=True)
+        print("8. Help & Corrected Features", flush=True)
         print("0. Exit", flush=True)
         print("="*80, flush=True)
         
         try:
-            choice = input("\nEnter your choice (0-7): ").strip()
+            choice = input("\nEnter your choice (0-8): ").strip()
             
             if choice == '0':
+                self._show_performance_summary()
                 print("\nExiting Zeus. Goodbye! ⚡", flush=True)
                 sys.exit(0)
             elif choice == '1':
@@ -290,6 +361,8 @@ Examples:
             elif choice == '6':
                 self._system_status()
             elif choice == '7':
+                self._show_performance_metrics()
+            elif choice == '8':
                 self._show_help()
             else:
                 print("❌ Invalid choice. Please try again.", flush=True)
@@ -297,10 +370,63 @@ Examples:
                 
         except KeyboardInterrupt:
             print("\n\nOperation cancelled.", flush=True)
+            self._show_performance_summary()
             sys.exit(0)
         except Exception as e:
             logger.error(f"Menu error: {str(e)}")
             input("Press Enter to continue...")
+    
+    def _show_performance_summary(self):
+        """Show session performance summary on exit."""
+        perf_report = performance_monitor.get_performance_report()
+        if perf_report['total_api_calls'] > 0:
+            print(f"\n📈 SESSION SUMMARY:")
+            print(f"   Duration: {perf_report['session_duration']:.1f}s")
+            print(f"   API Calls: {perf_report['total_api_calls']}")
+            print(f"   Total Cost: {perf_report['total_cost']} credits")
+            print(f"   Avg Response Time: {perf_report['avg_response_time']:.2f}s")
+    
+    def _show_performance_metrics(self):
+        """Show detailed performance metrics."""
+        print("\n" + "="*70, flush=True)
+        print("    📈 ZEUS PERFORMANCE METRICS", flush=True)
+        print("="*70, flush=True)
+        
+        perf_report = performance_monitor.get_performance_report()
+        
+        print(f"\n⏱️ SESSION INFO:")
+        print(f"   Duration: {perf_report['session_duration']:.1f} seconds")
+        print(f"   Total API Calls: {perf_report['total_api_calls']}")
+        print(f"   Calls per Second: {perf_report['calls_per_second']:.2f}")
+        
+        print(f"\n💰 COST TRACKING:")
+        print(f"   Total Credits Used: {perf_report['total_cost']}")
+        print(f"   Average Cost per Call: {perf_report['total_cost'] / perf_report['total_api_calls']:.1f}" if perf_report['total_api_calls'] > 0 else "   Average Cost per Call: 0")
+        
+        print(f"\n🚀 RESPONSE TIMES:")
+        print(f"   Average Response Time: {perf_report['avg_response_time']:.2f}s")
+        
+        if perf_report['api_breakdown']:
+            print(f"\n📊 API BREAKDOWN:")
+            for api_name, stats in perf_report['api_breakdown'].items():
+                success_rate = (stats['success'] / stats['calls'] * 100) if stats['calls'] > 0 else 0
+                print(f"   {api_name}:")
+                print(f"     Calls: {stats['calls']}, Cost: {stats['cost']} credits")
+                print(f"     Success Rate: {success_rate:.1f}%")
+                print(f"     Avg Response: {stats['avg_response_time']:.2f}s")
+        
+        # Performance recommendations
+        if perf_report['avg_response_time'] > 5:
+            print(f"\n⚠️ PERFORMANCE ALERTS:")
+            print(f"   • Slow API responses detected ({perf_report['avg_response_time']:.2f}s avg)")
+            print(f"   • Consider checking network connectivity")
+        
+        if perf_report['total_cost'] > 1000:
+            print(f"\n💡 COST OPTIMIZATION:")
+            print(f"   • High API usage detected ({perf_report['total_cost']} credits)")
+            print(f"   • Consider batch processing for large wallet lists")
+        
+        input("\nPress Enter to continue...")
     
     def _interactive_configure(self):
         """Interactive API configuration with REQUIRED validation."""
@@ -460,6 +586,13 @@ Examples:
         print(f"   Inflation Detection: {'✅ ENABLED' if features_config.get('enable_inflation_detection', True) else '❌ DISABLED'}")
         print(f"   Auto-Correction: {'✅ ENABLED' if features_config.get('enable_auto_correction', True) else '❌ DISABLED'}")
         
+        print(f"\n📈 PERFORMANCE MONITORING:")
+        perf_config = self.config.get('performance', {})
+        print(f"   Performance Monitoring: {'✅ ENABLED' if perf_config.get('enable_monitoring', True) else '❌ DISABLED'}")
+        print(f"   API Cost Tracking: {'✅ ENABLED' if perf_config.get('track_api_costs', True) else '❌ DISABLED'}")
+        print(f"   Response Time Tracking: {'✅ ENABLED' if perf_config.get('track_response_times', True) else '❌ DISABLED'}")
+        print(f"   Cost Alert Threshold: {perf_config.get('cost_alert_threshold', 1000)} credits")
+        
         print(f"\n⚡ CORRECTED PATTERN THRESHOLDS:")
         print(f"   Very Short Holds: <{analysis_config.get('very_short_threshold_minutes', 5)} minutes (flippers)")
         print(f"   Long Holds: >{analysis_config.get('long_hold_threshold_hours', 24)} hours (position traders)")
@@ -474,6 +607,7 @@ Examples:
             print(f"   TP/SL Validation: ✅ Available (auto-correction)")
             print(f"   Exit Behavior Inference: ✅ Available")
             print(f"   Pattern Recognition: ✅ Available (corrected thresholds)")
+            print(f"   Performance Monitoring: ✅ Active")
             if validation['missing_recommended']:
                 print(f"   Enhanced Features: ⚠️ Limited (missing {len(validation['missing_recommended'])} recommended APIs)")
             else:
@@ -488,6 +622,7 @@ Examples:
         print(f"   • Exit Behavior Inference: Understands what traders actually got vs final token price")
         print(f"   • Pattern Validation: Auto-detects and corrects inflated recommendations")
         print(f"   • Corrected Thresholds: 5min for flippers, 24hr for position traders")
+        print(f"   • Performance Monitoring: Real-time API cost and response tracking")
         
         input("\nPress Enter to continue...")
     
@@ -517,7 +652,8 @@ Examples:
                 birdeye_api_key=api_keys["birdeye_api_key"],
                 cielo_api_key=api_keys["cielo_api_key"],
                 helius_api_key=api_keys["helius_api_key"],
-                rpc_url=api_keys["solana_rpc_url"]
+                rpc_url=api_keys["solana_rpc_url"],
+                performance_monitor=performance_monitor
             )
             
             print(f"✅ API manager initialized successfully!")
@@ -581,6 +717,7 @@ Examples:
             print(f"   TP/SL Validation: ✅ Available (auto-correction)")
             print(f"   Exit Behavior Inference: ✅ Available")
             print(f"   Pattern Thresholds: ✅ Corrected (5min/24hr)")
+            print(f"   Performance Monitoring: ✅ Active")
             
         except ValueError as e:
             print(f"\n❌ CRITICAL ERROR: {str(e)}")
@@ -636,7 +773,8 @@ Examples:
                 birdeye_api_key=api_keys["birdeye_api_key"],
                 cielo_api_key=api_keys["cielo_api_key"],
                 helius_api_key=api_keys["helius_api_key"],
-                rpc_url=api_keys["solana_rpc_url"]
+                rpc_url=api_keys["solana_rpc_url"],
+                performance_monitor=performance_monitor
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
@@ -651,6 +789,7 @@ Examples:
             print(f"   • Pattern thresholds: <5min (flipper) | >24hr (position)")
             print(f"   • Validation: Auto-detect & correct inflated TP/SL")
             print(f"   • Exit Analysis: Separates actual exit ROI from final token ROI")
+            print(f"   • Performance Monitoring: ✅ Active")
             
             # Estimate costs
             total_trading_stats_cost = len(wallets) * 30
@@ -662,6 +801,11 @@ Examples:
             print(f"   CORRECTED Token PnL: {len(wallets)} × 5 = {total_token_pnl_cost} credits")
             print(f"   TOTAL: {total_cost} credits")
             
+            # Check cost threshold
+            cost_threshold = self.config.get('performance', {}).get('cost_alert_threshold', 1000)
+            if total_cost > cost_threshold:
+                print(f"   ⚠️ High cost detected (>{cost_threshold} threshold)")
+            
             confirm = input(f"\nProceed with CORRECTED analysis? (y/N): ").lower().strip()
             if confirm != 'y':
                 print("Analysis cancelled.")
@@ -669,7 +813,9 @@ Examples:
                 return
             
             # Run batch analysis
+            start_time = time.time()
             results = analyzer.analyze_wallets_batch(wallets)
+            analysis_duration = time.time() - start_time
             
             if results.get("success"):
                 # Export results
@@ -683,9 +829,17 @@ Examples:
                     print(f"\n✅ Analysis complete with CORRECTED EXIT ANALYSIS!")
                     print(f"📄 Results saved to: {output_file}")
                     print(f"📊 CSV includes: REALISTIC TP/SL levels, corrected exit analysis, pattern validation")
+                    print(f"⏱️ Analysis Duration: {analysis_duration:.1f}s")
                     
                     # Display summary
                     self._display_analysis_summary_corrected(results)
+                    
+                    # Show performance metrics
+                    perf_report = performance_monitor.get_performance_report()
+                    print(f"\n📈 PERFORMANCE SUMMARY:")
+                    print(f"   Total API Calls: {perf_report['total_api_calls']}")
+                    print(f"   Total Cost: {perf_report['total_cost']} credits")
+                    print(f"   Avg Response Time: {perf_report['avg_response_time']:.2f}s")
                 else:
                     print(f"\n⚠️ Analysis completed but export failed")
             else:
@@ -735,7 +889,8 @@ Examples:
                 birdeye_api_key=api_keys["birdeye_api_key"],
                 cielo_api_key=api_keys["cielo_api_key"],
                 helius_api_key=api_keys["helius_api_key"],
-                rpc_url=api_keys["solana_rpc_url"]
+                rpc_url=api_keys["solana_rpc_url"],
+                performance_monitor=performance_monitor
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
@@ -746,13 +901,23 @@ Examples:
             print(f"   ⚡ Exit Behavior Inference: Separates actual vs final ROI")
             print(f"   🔧 Realistic TP/SL: Pattern-aware recommendations")
             print(f"   🔍 TP/SL Validation: Auto-correction of inflated levels")
+            print(f"   📈 Performance Monitoring: Active")
             
             # Run single analysis
+            start_time = time.time()
             result = analyzer.analyze_single_wallet(wallet_address)
+            analysis_duration = time.time() - start_time
             
             if result.get("success"):
                 # Display detailed results
                 self._display_single_wallet_result_corrected(result)
+                
+                # Show performance for this analysis
+                print(f"\n📈 ANALYSIS PERFORMANCE:")
+                print(f"   Duration: {analysis_duration:.1f}s")
+                perf_report = performance_monitor.get_performance_report()
+                print(f"   API Calls: {perf_report['total_api_calls']}")
+                print(f"   Cost: {perf_report['total_cost']} credits")
             else:
                 error_type = result.get('error_type', 'UNKNOWN')
                 print(f"\n❌ Analysis failed ({error_type}): {result.get('error', 'Unknown error')}")
@@ -962,6 +1127,7 @@ Examples:
         print(f"   Field Extraction: Direct (no scaling/conversion)")
         print(f"   Exit Analysis: CORRECTED (separates actual vs final ROI)")
         print(f"   Validation: Auto-correction of inflated TP/SL levels")
+        print(f"   Performance Monitoring: Active")
     
     def _system_status(self):
         """Display system status with CORRECTED features."""
@@ -1015,6 +1181,7 @@ Examples:
         print(f"   Pattern Recognition: ✅ Available (corrected thresholds)")
         print(f"   Very Short Holds: <{analysis_config.get('very_short_threshold_minutes', 5)} minutes")
         print(f"   Long Holds: >{analysis_config.get('long_hold_threshold_hours', 24)} hours")
+        print(f"   Performance Monitoring: ✅ Active")
         
         if validation['system_ready']:
             try:
@@ -1024,7 +1191,8 @@ Examples:
                     birdeye_api_key=api_keys["birdeye_api_key"],
                     cielo_api_key=api_keys["cielo_api_key"],
                     helius_api_key=api_keys["helius_api_key"],
-                    rpc_url=api_keys["solana_rpc_url"]
+                    rpc_url=api_keys["solana_rpc_url"],
+                    performance_monitor=performance_monitor
                 )
                 
                 status = api_manager.get_api_status()
@@ -1044,6 +1212,7 @@ Examples:
                 print(f"   Exit Behavior Inference: ✅ Available")
                 print(f"   Accurate Timestamps: ✅ Available (Helius PRIMARY)")
                 print(f"   Pattern-based Strategies: ✅ Available (corrected thresholds)")
+                print(f"   Performance Monitoring: ✅ Available (real-time)")
                 
             except Exception as e:
                 print(f"\n❌ Error checking detailed status: {str(e)}")
@@ -1061,6 +1230,7 @@ Examples:
         print(f"   📊 Exit Behavior Inference: Understands what traders actually got vs final price")
         print(f"   🔍 Pattern Recognition: 5min threshold for flippers, 24hr for position traders")
         print(f"   ✅ Auto-Correction: No more inflated TP/SL recommendations!")
+        print(f"   📈 Performance Monitoring: Real-time API cost and response tracking")
         
         input("\nPress Enter to continue...")
     
@@ -1089,6 +1259,7 @@ Examples:
         print(f"   • TP/SL Validation: Auto-detects and corrects inflated levels")
         print(f"   • Pattern Recognition: Corrected thresholds (5min/24hr)")
         print(f"   • Auto-Correction: Prevents dangerous trading recommendations")
+        print(f"   • Performance Monitoring: Real-time API cost and response tracking")
         
         print(f"\n🚨 REQUIRED APIs (System cannot function without these):")
         print(f"   • Cielo Finance API - Trading Stats (30 credits) + Token PnL (5 credits)")
@@ -1121,6 +1292,12 @@ Examples:
         print(f"   • Pattern Validation: Ensures TP/SL makes sense for trading style")
         print(f"   • Safety Buffers: Removes dangerous inflating multipliers")
         
+        print(f"\n📈 PERFORMANCE MONITORING:")
+        print(f"   • Real-time API cost tracking with alerts")
+        print(f"   • Response time monitoring and optimization")
+        print(f"   • Session performance summaries")
+        print(f"   • Cost threshold warnings")
+        
         print(f"\n📋 CORRECTED ANALYSIS PROCESS:")
         print(f"1. Get REAL last transaction timestamp from Helius API")
         print(f"2. Get Trading Stats from Cielo API (30 credits, direct fields)")
@@ -1130,18 +1307,21 @@ Examples:
         print(f"6. Calculate REALISTIC TP/SL based on actual trading behavior")
         print(f"7. VALIDATE and auto-correct any inflated recommendations")
         print(f"8. Generate binary decisions and corrected strategy")
+        print(f"9. Track performance metrics and costs")
         
         print(f"\n⚡ COMMAND EXAMPLES:")
         print(f"   zeus configure --cielo-api-key YOUR_KEY --helius-api-key YOUR_KEY")
         print(f"   zeus analyze --wallets wallets.txt")
         print(f"   zeus analyze --wallet 7xG8...k9mP")
         print(f"   zeus status")
+        print(f"   zeus performance")
         
         print(f"\n💡 WHY THIS MATTERS:")
         print(f"   • Trading bots using OLD Zeus recommendations could set 200%+ TP levels")
         print(f"   • These levels would rarely execute for flipper strategies")
         print(f"   • NEW Zeus provides actionable, realistic levels that actually work")
         print(f"   • CORRECTED analysis leads to better trading outcomes")
+        print(f"   • Performance monitoring helps optimize API usage and costs")
         
         input("\nPress Enter to continue...")
     
@@ -1161,6 +1341,8 @@ Examples:
                 self._handle_analyze_command(args)
             elif args.command == "status":
                 self._handle_status_command(args)
+            elif args.command == "performance":
+                self._handle_performance_command(args)
     
     def _handle_configure_command(self, args):
         """Handle configure command."""
@@ -1197,6 +1379,7 @@ Examples:
             logger.info("🎯 CORRECTED Exit Analysis: Available (separates actual vs final ROI)")
             logger.info("⚡ Realistic TP/SL: Pattern-aware recommendations")
             logger.info("🔧 TP/SL Validation: Auto-correction enabled")
+            logger.info("📈 Performance Monitoring: Active")
         else:
             logger.warning("⚠️ Configuration saved but system is NOT READY!")
             logger.warning(f"Missing REQUIRED APIs: {', '.join([api.replace('_api_key', '').upper() for api in validation['missing_required']])}")
@@ -1223,12 +1406,14 @@ Examples:
             logger.info("🎯 CORRECTED Exit Analysis: Available (separates actual vs final ROI)")
             logger.info("⚡ Realistic TP/SL: Pattern-aware recommendations")
             logger.info("🔧 TP/SL Validation: Auto-correction enabled")
+            logger.info("📈 Performance Monitoring: Active")
             
             api_manager = ZeusAPIManager(
                 birdeye_api_key=api_keys["birdeye_api_key"],
                 cielo_api_key=api_keys["cielo_api_key"],
                 helius_api_key=api_keys["helius_api_key"],
-                rpc_url=api_keys["solana_rpc_url"]
+                rpc_url=api_keys["solana_rpc_url"],
+                performance_monitor=performance_monitor
             )
             
             analyzer = ZeusAnalyzer(api_manager, self.config)
@@ -1245,6 +1430,10 @@ Examples:
                     export_zeus_analysis({"analyses": [result]}, output_file)
                     logger.info(f"Results saved to {output_file}")
                     logger.info(f"📊 CSV includes: CORRECTED exit analysis, REALISTIC TP/SL")
+                    
+                    # Show performance metrics
+                    perf_report = performance_monitor.get_performance_report()
+                    logger.info(f"📈 Performance: {perf_report['total_api_calls']} calls, {perf_report['total_cost']} credits, {perf_report['avg_response_time']:.2f}s avg")
                 else:
                     error_type = result.get('error_type', 'UNKNOWN')
                     logger.error(f"Analysis failed ({error_type}): {result.get('error')}")
@@ -1266,6 +1455,10 @@ Examples:
                     export_zeus_analysis(results, output_file)
                     logger.info(f"Results saved to {output_file}")
                     logger.info(f"📊 CSV includes: CORRECTED exit analysis, REALISTIC TP/SL, validation results")
+                    
+                    # Show performance metrics
+                    perf_report = performance_monitor.get_performance_report()
+                    logger.info(f"📈 Performance: {perf_report['total_api_calls']} calls, {perf_report['total_cost']} credits, {perf_report['avg_response_time']:.2f}s avg")
                 else:
                     logger.error(f"Batch analysis failed: {results.get('error')}")
             
@@ -1317,6 +1510,7 @@ Examples:
             print(f"Pattern Thresholds: ✅ Corrected")
             print(f"Very Short Holds: <{analysis_config.get('very_short_threshold_minutes', 5)} minutes")
             print(f"Long Holds: >{analysis_config.get('long_hold_threshold_hours', 24)} hours")
+            print(f"Performance Monitoring: ✅ Active")
             
             if validation['system_ready']:
                 from zeus_api_manager import ZeusAPIManager
@@ -1325,7 +1519,8 @@ Examples:
                     birdeye_api_key=api_keys["birdeye_api_key"],
                     cielo_api_key=api_keys["cielo_api_key"],
                     helius_api_key=api_keys["helius_api_key"],
-                    rpc_url=api_keys["solana_rpc_url"]
+                    rpc_url=api_keys["solana_rpc_url"],
+                    performance_monitor=performance_monitor
                 )
                 
                 status = api_manager.get_api_status()
@@ -1333,11 +1528,33 @@ Examples:
                 print(f"CORRECTED Token PnL Analysis Ready: {validation['system_ready']}")
                 print(f"Realistic TP/SL Ready: {validation['system_ready']}")
                 print(f"TP/SL Validation Ready: ✅")
+                print(f"Performance Monitoring Ready: ✅")
             else:
                 print(f"Missing REQUIRED APIs: {', '.join([api.replace('_api_key', '').upper() for api in validation['missing_required']])}")
         
         except Exception as e:
             logger.error(f"Status check error: {str(e)}")
+    
+    def _handle_performance_command(self, args):
+        """Handle performance command."""
+        perf_report = performance_monitor.get_performance_report()
+        
+        print("Zeus Performance Metrics:")
+        print("=" * 40)
+        print(f"Session Duration: {perf_report['session_duration']:.1f}s")
+        print(f"Total API Calls: {perf_report['total_api_calls']}")
+        print(f"Total Cost: {perf_report['total_cost']} credits")
+        print(f"Average Response Time: {perf_report['avg_response_time']:.2f}s")
+        print(f"Calls per Second: {perf_report['calls_per_second']:.2f}")
+        
+        if perf_report['api_breakdown']:
+            print(f"\nAPI Breakdown:")
+            for api_name, stats in perf_report['api_breakdown'].items():
+                success_rate = (stats['success'] / stats['calls'] * 100) if stats['calls'] > 0 else 0
+                print(f"  {api_name}:")
+                print(f"    Calls: {stats['calls']}, Cost: {stats['cost']} credits")
+                print(f"    Success Rate: {success_rate:.1f}%")
+                print(f"    Avg Response: {stats['avg_response_time']:.2f}s")
 
 def main():
     """Main entry point."""
@@ -1346,6 +1563,7 @@ def main():
         cli.run()
     except KeyboardInterrupt:
         logger.info("Operation cancelled by user")
+        performance_monitor._show_performance_summary() if hasattr(performance_monitor, '_show_performance_summary') else None
         sys.exit(1)
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}")

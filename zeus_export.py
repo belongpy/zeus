@@ -1,10 +1,12 @@
 """
-Zeus Export - Updated for Corrected TP/SL Export
+Zeus Export - Updated for Corrected TP/SL Export with Performance Monitoring
 MAJOR UPDATES:
 - Export corrected TP/SL values that are realistic and actionable
 - Handle corrected exit analysis data properly
 - Preserve all existing export functionality
 - Enhanced logging for corrected values
+- FIXED: copy_wallet and copy_sells moved after composite_score
+- Added performance tracking for export operations
 """
 
 import os
@@ -18,7 +20,9 @@ from datetime import datetime, timedelta
 logger = logging.getLogger("zeus.export")
 
 def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
-    """Export Zeus analysis results to CSV with CORRECTED TP/SL values."""
+    """Export Zeus analysis results to CSV with CORRECTED TP/SL values and performance tracking."""
+    start_time = time.time()
+    
     try:
         # SAFE input validation
         if not isinstance(results, dict):
@@ -44,6 +48,9 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
             logger.warning("No analyses to export")
             return False
         
+        # Performance tracking
+        processing_start = time.time()
+        
         # Prepare CSV data with CORRECTED TP/SL values
         csv_data = []
         
@@ -59,10 +66,13 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
             # Create analysis row with CORRECTED Cielo field values and TP/SL
             csv_data.append(_create_corrected_analysis_row(analysis))
         
+        processing_time = time.time() - processing_start
+        
         # Sort by composite score (highest first) with SAFE comparison
         csv_data.sort(key=lambda x: _safe_float(x.get('composite_score', 0), 0), reverse=True)
         
-        # Write CSV with CORRECTED values
+        # Write CSV with CORRECTED values and FIXED column order
+        write_start = time.time()
         if csv_data:
             with open(output_file, 'w', newline='', encoding='utf-8') as f:
                 fieldnames = _get_updated_csv_fieldnames()
@@ -70,7 +80,14 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
                 writer.writeheader()
                 writer.writerows(csv_data)
         
+        write_time = time.time() - write_start
+        total_time = time.time() - start_time
+        
+        # Performance logging
         logger.info(f"✅ Exported {len(csv_data)} wallet analyses with CORRECTED TP/SL VALUES to: {output_file}")
+        logger.info(f"📊 Performance: Processing={processing_time:.2f}s, Writing={write_time:.2f}s, Total={total_time:.2f}s")
+        logger.info(f"🔧 Column order: copy_wallet/copy_sells after composite_score (FIXED)")
+        
         return True
         
     except Exception as e:
@@ -78,18 +95,18 @@ def export_zeus_analysis(results: Dict[str, Any], output_file: str) -> bool:
         return False
 
 def _get_updated_csv_fieldnames() -> List[str]:
-    """Get updated CSV fieldnames."""
+    """Get updated CSV fieldnames with FIXED column order - copy_wallet and copy_sells after composite_score."""
     return [
         'wallet_address',
         'composite_score',
+        'copy_wallet',          # MOVED: Now right after composite_score
+        'copy_sells',           # MOVED: Now right after composite_score  
         '7_day_winrate',
         'days_since_last_trade',
         'roi_7_day',
         'usd_profit_2_days',
         'usd_profit_7_days', 
         'usd_profit_30_days',
-        'copy_wallet',
-        'copy_sells',
         'tp_1',
         'tp_2',
         'stop_loss',
@@ -130,18 +147,18 @@ def _create_corrected_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
         # Get CORRECTED TP/SL recommendations
         corrected_tp_sl = _extract_corrected_tp_sl_recommendations(analysis)
         
-        # Create the row with CORRECTED values
+        # Create the row with CORRECTED values and FIXED column order
         row = {
             'wallet_address': wallet_address,
             'composite_score': round(_safe_float(analysis.get('composite_score', 0), 0), 1),
+            'copy_wallet': 'YES' if binary_decisions.get('follow_wallet', False) else 'NO',      # MOVED after composite_score
+            'copy_sells': 'YES' if binary_decisions.get('follow_sells', False) else 'NO',       # MOVED after composite_score
             '7_day_winrate': cielo_values['winrate_7_day'],
             'days_since_last_trade': real_days_since_last,
             'roi_7_day': cielo_values['roi_7_day'],
             'usd_profit_2_days': cielo_values['usd_profit_2_days'],
             'usd_profit_7_days': cielo_values['usd_profit_7_days'],
             'usd_profit_30_days': cielo_values['usd_profit_30_days'],
-            'copy_wallet': 'YES' if binary_decisions.get('follow_wallet', False) else 'NO',
-            'copy_sells': 'YES' if binary_decisions.get('follow_sells', False) else 'NO',
             'tp_1': corrected_tp_sl['tp1'],  # CORRECTED VALUES
             'tp_2': corrected_tp_sl['tp2'],  # CORRECTED VALUES
             'stop_loss': corrected_tp_sl['stop_loss'],  # CORRECTED VALUES
@@ -160,6 +177,7 @@ def _create_corrected_analysis_row(analysis: Dict[str, Any]) -> Dict[str, Any]:
         logger.info(f"    TP2: {corrected_tp_sl['tp2']}% (CORRECTED)")
         logger.info(f"    SL: {corrected_tp_sl['stop_loss']}% (CORRECTED)")
         logger.info(f"    Reasoning: {corrected_tp_sl['reasoning']}")
+        logger.info(f"    Column Order: copy_wallet/copy_sells after composite_score ✅")
         
         return row
         
@@ -616,21 +634,21 @@ def _generate_decision_reasoning_safe(analysis: Dict[str, Any]) -> str:
         return f"Decision error: {str(e)}"
 
 def _create_failed_row_safe(analysis: Dict[str, Any]) -> Dict[str, Any]:
-    """Create CSV row for failed analysis with SAFE validation."""
+    """Create CSV row for failed analysis with SAFE validation and FIXED column order."""
     wallet_address = str(analysis.get('wallet_address', '')) if isinstance(analysis, dict) else ''
     error_message = str(analysis.get('error', 'Unknown error')) if isinstance(analysis, dict) else 'Unknown error'
     
     return {
         'wallet_address': wallet_address,
         'composite_score': 0,
+        'copy_wallet': 'NO',      # MOVED after composite_score
+        'copy_sells': 'NO',       # MOVED after composite_score
         '7_day_winrate': 0.0,
         'days_since_last_trade': 999,
         'roi_7_day': 0.0,
         'usd_profit_2_days': 0.0,
         'usd_profit_7_days': 0.0,
         'usd_profit_30_days': 0.0,
-        'copy_wallet': 'NO',
-        'copy_sells': 'NO',
         'tp_1': 0,
         'tp_2': 0,
         'stop_loss': -35,
@@ -644,20 +662,20 @@ def _create_failed_row_safe(analysis: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 def _create_error_row_safe(analysis: Dict[str, Any], error_msg: str) -> Dict[str, Any]:
-    """Create error row when row creation fails with SAFE validation."""
+    """Create error row when row creation fails with SAFE validation and FIXED column order."""
     wallet_address = str(analysis.get('wallet_address', '')) if isinstance(analysis, dict) else ''
     
     return {
         'wallet_address': wallet_address,
         'composite_score': 0,
+        'copy_wallet': 'NO',      # MOVED after composite_score
+        'copy_sells': 'NO',       # MOVED after composite_score
         '7_day_winrate': 0.0,
         'days_since_last_trade': 999,
         'roi_7_day': 0.0,
         'usd_profit_2_days': 0.0,
         'usd_profit_7_days': 0.0,
         'usd_profit_30_days': 0.0,
-        'copy_wallet': 'NO',
-        'copy_sells': 'NO',
         'tp_1': 0,
         'tp_2': 0,
         'stop_loss': -35,
@@ -671,7 +689,9 @@ def _create_error_row_safe(analysis: Dict[str, Any], error_msg: str) -> Dict[str
     }
 
 def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
-    """Export Zeus analysis summary to text file with CORRECTED TP/SL info."""
+    """Export Zeus analysis summary to text file with CORRECTED TP/SL info and performance tracking."""
+    start_time = time.time()
+    
     try:
         # SAFE input validation
         if not isinstance(results, dict):
@@ -708,12 +728,15 @@ def export_zeus_summary(results: Dict[str, Any], output_file: str) -> bool:
             f.write(f"Data Source: SAFE Cielo API field extraction\n")
             f.write(f"Exit Analysis: CORRECTED to infer actual exit points\n")
             f.write(f"TP/SL Values: CORRECTED and realistic for each pattern\n")
+            f.write(f"Column Order: copy_wallet/copy_sells after composite_score ✅\n")
             f.write(f"Flipper TP Range: 15-60% (quick exits)\n")
             f.write(f"Gem Hunter TP Range: 50-400% (patient for moonshots)\n")
             f.write(f"Position Trader TP Range: 60-300% (longer holds)\n")
             f.write(f"Validation: Pattern-based TP/SL limits enforced\n\n")
         
+        total_time = time.time() - start_time
         logger.info(f"✅ Exported Zeus summary with CORRECTED TP/SL info to: {output_file}")
+        logger.info(f"📊 Summary export time: {total_time:.2f}s")
         return True
         
     except Exception as e:

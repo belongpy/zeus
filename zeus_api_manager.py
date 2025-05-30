@@ -1,9 +1,12 @@
 """
-Zeus API Manager - Enhanced for Corrected Exit Analysis
+Zeus API Manager - Enhanced for Corrected Exit Analysis with Performance Monitoring
 ENHANCEMENTS:
 - Enhanced Token PnL data extraction for better exit analysis
 - Improved transaction data processing for exit pattern inference
 - Added better logging for exit analysis debugging
+- Performance monitoring for API costs and response times
+- Real-time cost tracking and alerts
+- Response time optimization monitoring
 - Preserved all existing core functionality
 """
 
@@ -17,17 +20,22 @@ import dateutil.parser
 logger = logging.getLogger("zeus.api_manager")
 
 class ZeusAPIManager:
-    """Zeus API manager with ENHANCED Token PnL analysis for corrected exit analysis."""
+    """Zeus API manager with ENHANCED Token PnL analysis for corrected exit analysis and performance monitoring."""
     
     def __init__(self, birdeye_api_key: str = "", cielo_api_key: str = "", 
-                 helius_api_key: str = "", rpc_url: str = "https://api.mainnet-beta.solana.com"):
-        """Initialize with REQUIRED API key validation."""
+                 helius_api_key: str = "", rpc_url: str = "https://api.mainnet-beta.solana.com",
+                 performance_monitor=None):
+        """Initialize with REQUIRED API key validation and performance monitoring."""
         
         # Store API keys
         self.birdeye_api_key = birdeye_api_key.strip() if birdeye_api_key else ""
         self.cielo_api_key = cielo_api_key.strip() if cielo_api_key else ""
         self.helius_api_key = helius_api_key.strip() if helius_api_key else ""
         self.rpc_url = rpc_url
+        
+        # Performance monitoring
+        self.performance_monitor = performance_monitor
+        self.enable_monitoring = performance_monitor is not None
         
         # VALIDATE REQUIRED APIS
         if not self.cielo_api_key:
@@ -52,7 +60,7 @@ class ZeusAPIManager:
         # Request session
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Zeus-Wallet-Analyzer/2.2-Enhanced-Exit-Analysis',
+            'User-Agent': 'Zeus-Wallet-Analyzer/3.0-Performance-Monitoring',
             'Accept': 'application/json'
         })
         
@@ -60,7 +68,7 @@ class ZeusAPIManager:
     
     def _initialize_apis(self):
         """Initialize API configurations with validation."""
-        logger.info("🔧 Initializing Zeus API Manager with ENHANCED EXIT ANALYSIS...")
+        logger.info("🔧 Initializing Zeus API Manager with ENHANCED EXIT ANALYSIS and PERFORMANCE MONITORING...")
         
         if self.cielo_api_key:
             logger.info("✅ Cielo Finance API key configured (Trading Stats + ENHANCED Token PnL)")
@@ -78,9 +86,35 @@ class ZeusAPIManager:
             logger.info("✅ Birdeye API key configured (enhanced features)")
         else:
             logger.info("⚠️ Birdeye API key not provided (limited features)")
+        
+        if self.enable_monitoring:
+            logger.info("📈 Performance monitoring: ENABLED")
+        else:
+            logger.info("📈 Performance monitoring: DISABLED")
+    
+    def _record_api_call(self, api_name: str, cost: int, response_time: float, success: bool):
+        """Record API call for performance monitoring."""
+        # Update internal stats
+        if api_name in self.api_stats:
+            self.api_stats[api_name]['calls'] += 1
+            if success:
+                self.api_stats[api_name]['success'] += 1
+            else:
+                self.api_stats[api_name]['errors'] += 1
+        
+        # Record in external performance monitor if available
+        if self.enable_monitoring and self.performance_monitor:
+            self.performance_monitor.record_api_call(api_name, cost, response_time, success)
+            
+            # Check for cost alerts
+            if hasattr(self.performance_monitor, 'total_cost'):
+                if self.performance_monitor.total_cost > 1000:  # Alert threshold
+                    logger.warning(f"⚠️ High API cost detected: {self.performance_monitor.total_cost} credits")
     
     def get_last_transaction_timestamp(self, wallet_address: str) -> Dict[str, Any]:
-        """Get the REAL last transaction timestamp using Helius API with ENHANCED transaction analysis."""
+        """Get the REAL last transaction timestamp using Helius API with ENHANCED transaction analysis and performance monitoring."""
+        start_time = time.time()
+        
         try:
             logger.info(f"🕐 HELIUS PRIMARY: Getting real last transaction timestamp for {wallet_address[:8]}...")
             
@@ -98,14 +132,16 @@ class ZeusAPIManager:
             logger.debug(f"Parameters: {params}")
             
             response = self.session.get(url, params=params, timeout=30)
+            response_time = time.time() - start_time
             
-            logger.debug(f"Helius response: HTTP {response.status_code}")
+            logger.debug(f"Helius response: HTTP {response.status_code} in {response_time:.2f}s")
             
             if response.status_code == 200:
                 transactions = response.json()
                 self.api_stats['helius']['success'] += 1
+                self._record_api_call('helius_timestamp', 0, response_time, True)
                 
-                logger.info(f"✅ Helius API success - received {len(transactions)} transactions")
+                logger.info(f"✅ Helius API success - received {len(transactions)} transactions in {response_time:.2f}s")
                 
                 if transactions and len(transactions) > 0:
                     # ENHANCED: Process transactions for better trading activity detection
@@ -120,6 +156,7 @@ class ZeusAPIManager:
                         logger.info(f"   Date: {datetime.fromtimestamp(trading_analysis['latest_trade_timestamp'])}")
                         logger.info(f"   Days ago: {days_since_last:.2f}")
                         logger.info(f"   Trading activity: {trading_analysis['trading_activity_summary']}")
+                        logger.info(f"   Response time: {response_time:.2f}s")
                         
                         return {
                             'success': True,
@@ -130,47 +167,71 @@ class ZeusAPIManager:
                             'method': 'helius_transactions_api',
                             'wallet_address': wallet_address,
                             'timestamp_accuracy': 'high',
-                            'trading_analysis': trading_analysis  # ENHANCED: Include trading activity analysis
+                            'trading_analysis': trading_analysis,  # ENHANCED: Include trading activity analysis
+                            'performance': {
+                                'response_time': response_time,
+                                'cost': 0
+                            }
                         }
                     else:
                         logger.warning(f"⚠️ HELIUS: No trading transactions found in recent history")
+                        self._record_api_call('helius_timestamp', 0, response_time, False)
                         return {
                             'success': False,
                             'error': 'No trading transactions found in recent history',
                             'transaction_count': len(transactions),
                             'source': 'helius_primary',
                             'method': 'helius_transactions_api',
-                            'trading_analysis': trading_analysis
+                            'trading_analysis': trading_analysis,
+                            'performance': {
+                                'response_time': response_time,
+                                'cost': 0
+                            }
                         }
                 else:
                     logger.warning(f"⚠️ HELIUS: No transactions found for wallet {wallet_address[:8]}")
+                    self._record_api_call('helius_timestamp', 0, response_time, False)
                     return {
                         'success': False,
                         'error': 'No transactions found for wallet',
                         'source': 'helius_primary',
-                        'method': 'helius_transactions_api'
+                        'method': 'helius_transactions_api',
+                        'performance': {
+                            'response_time': response_time,
+                            'cost': 0
+                        }
                     }
             
             elif response.status_code == 401:
                 error_msg = "Helius API authentication failed - check API key"
                 logger.error(f"❌ {error_msg}")
                 self.api_stats['helius']['errors'] += 1
+                self._record_api_call('helius_timestamp', 0, response_time, False)
                 return {
                     'success': False,
                     'error': error_msg,
                     'error_code': 401,
-                    'source': 'helius_primary'
+                    'source': 'helius_primary',
+                    'performance': {
+                        'response_time': response_time,
+                        'cost': 0
+                    }
                 }
             
             elif response.status_code == 429:
                 error_msg = "Helius API rate limited"
                 logger.warning(f"⚠️ {error_msg}")
                 self.api_stats['helius']['errors'] += 1
+                self._record_api_call('helius_timestamp', 0, response_time, False)
                 return {
                     'success': False,
                     'error': error_msg,
                     'error_code': 429,
-                    'source': 'helius_primary'
+                    'source': 'helius_primary',
+                    'performance': {
+                        'response_time': response_time,
+                        'cost': 0
+                    }
                 }
             
             else:
@@ -180,30 +241,47 @@ class ZeusAPIManager:
                 
                 logger.error(f"❌ {error_msg}")
                 self.api_stats['helius']['errors'] += 1
+                self._record_api_call('helius_timestamp', 0, response_time, False)
                 return {
                     'success': False,
                     'error': error_msg,
                     'error_code': response.status_code,
-                    'source': 'helius_primary'
+                    'source': 'helius_primary',
+                    'performance': {
+                        'response_time': response_time,
+                        'cost': 0
+                    }
                 }
             
         except requests.exceptions.Timeout:
+            response_time = time.time() - start_time
             error_msg = "Helius API timeout"
-            logger.error(f"❌ {error_msg}")
+            logger.error(f"❌ {error_msg} after {response_time:.2f}s")
             self.api_stats['helius']['errors'] += 1
+            self._record_api_call('helius_timestamp', 0, response_time, False)
             return {
                 'success': False,
                 'error': error_msg,
-                'source': 'helius_primary'
+                'source': 'helius_primary',
+                'performance': {
+                    'response_time': response_time,
+                    'cost': 0
+                }
             }
         except Exception as e:
+            response_time = time.time() - start_time
             error_msg = f"Helius API unexpected error: {str(e)}"
             logger.error(f"❌ {error_msg}")
             self.api_stats['helius']['errors'] += 1
+            self._record_api_call('helius_timestamp', 0, response_time, False)
             return {
                 'success': False,
                 'error': error_msg,
-                'source': 'helius_primary'
+                'source': 'helius_primary',
+                'performance': {
+                    'response_time': response_time,
+                    'cost': 0
+                }
             }
     
     def _analyze_recent_trading_activity(self, transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -392,9 +470,11 @@ class ZeusAPIManager:
     
     def get_wallet_trading_stats(self, wallet_address: str) -> Dict[str, Any]:
         """
-        Get wallet trading statistics from Cielo Finance Trading Stats API with SAFE FIELD VALIDATION.
+        Get wallet trading statistics from Cielo Finance Trading Stats API with SAFE FIELD VALIDATION and performance monitoring.
         Cost: 30 credits
         """
+        start_time = time.time()
+        
         try:
             if not self.cielo_api_key:
                 return {
@@ -433,16 +513,18 @@ class ZeusAPIManager:
                 try:
                     headers = {**base_headers, **auth_header}
                     response = self.session.get(url, headers=headers, timeout=30)
+                    response_time = time.time() - start_time
                     
-                    logger.debug(f"Cielo Trading Stats response: HTTP {response.status_code}")
+                    logger.debug(f"Cielo Trading Stats response: HTTP {response.status_code} in {response_time:.2f}s")
                     
                     if response.status_code == 200:
                         # SUCCESS - Extract complete response data with SAFE FIELD VALIDATION
                         try:
                             response_data = response.json()
                             self.api_stats['cielo_trading_stats']['success'] += 1
+                            self._record_api_call('cielo_trading_stats', 30, response_time, True)
                             
-                            logger.info(f"✅ Cielo Trading Stats API success with {auth_method}!")
+                            logger.info(f"✅ Cielo Trading Stats API success with {auth_method} in {response_time:.2f}s!")
                             
                             # SAFE FIELD DISCOVERY: Log the exact API response structure
                             logger.info(f"🔍 SAFE CIELO TRADING STATS FIELDS for {wallet_address[:8]}:")
@@ -477,7 +559,11 @@ class ZeusAPIManager:
                                         'raw_response': response_data,
                                         'field_validation': validation_result,
                                         'credit_cost': 30,
-                                        'field_extraction_method': 'safe_direct_mapping'
+                                        'field_extraction_method': 'safe_direct_mapping',
+                                        'performance': {
+                                            'response_time': response_time,
+                                            'cost': 30
+                                        }
                                     }
                                 else:
                                     logger.warning(f"⚠️ Trading data is not a dict: {type(actual_trading_data)}")
@@ -492,7 +578,11 @@ class ZeusAPIManager:
                                 'wallet_address': wallet_address,
                                 'response_timestamp': int(time.time()),
                                 'raw_response': response_data,
-                                'credit_cost': 30
+                                'credit_cost': 30,
+                                'performance': {
+                                    'response_time': response_time,
+                                    'cost': 30
+                                }
                             }
                             
                         except ValueError as json_error:
@@ -503,12 +593,17 @@ class ZeusAPIManager:
                     elif response.status_code == 404:
                         logger.warning(f"⚠️ Wallet {wallet_address[:8]}... not found in Cielo Trading Stats database")
                         self.api_stats['cielo_trading_stats']['errors'] += 1
+                        self._record_api_call('cielo_trading_stats', 30, response_time, False)
                         return {
                             'success': False,
                             'error': f'Wallet not found in Cielo Trading Stats database',
                             'error_code': 404,
                             'auth_method_used': auth_method,
-                            'source': 'cielo_trading_stats_safe'
+                            'source': 'cielo_trading_stats_safe',
+                            'performance': {
+                                'response_time': response_time,
+                                'cost': 30
+                            }
                         }
                     
                     elif response.status_code in [401, 403]:
@@ -529,32 +624,46 @@ class ZeusAPIManager:
                     continue
             
             # If we get here, all auth methods failed
+            response_time = time.time() - start_time
             error_msg = f"All Cielo Trading Stats authentication methods failed. API key may be invalid."
             logger.error(f"❌ {error_msg}")
             self.api_stats['cielo_trading_stats']['errors'] += 1
+            self._record_api_call('cielo_trading_stats', 30, response_time, False)
             
             return {
                 'success': False,
                 'error': error_msg,
                 'attempted_auth_methods': len(auth_methods),
-                'source': 'cielo_trading_stats_safe'
+                'source': 'cielo_trading_stats_safe',
+                'performance': {
+                    'response_time': response_time,
+                    'cost': 30
+                }
             }
             
         except Exception as e:
+            response_time = time.time() - start_time
             error_msg = f"Cielo Trading Stats API error: {str(e)}"
             logger.error(f"❌ {error_msg}")
             self.api_stats['cielo_trading_stats']['errors'] += 1
+            self._record_api_call('cielo_trading_stats', 30, response_time, False)
             return {
                 'success': False,
                 'error': error_msg,
-                'source': 'cielo_trading_stats_safe'
+                'source': 'cielo_trading_stats_safe',
+                'performance': {
+                    'response_time': response_time,
+                    'cost': 30
+                }
             }
     
     def get_token_pnl(self, wallet_address: str, limit: int = 5) -> Dict[str, Any]:
         """
-        Get individual token PnL data with ENHANCED structure parsing for exit analysis.
+        Get individual token PnL data with ENHANCED structure parsing for exit analysis and performance monitoring.
         Cost: 5 credits (much cheaper than Trading Stats)
         """
+        start_time = time.time()
+        
         try:
             if not self.cielo_api_key:
                 return {
@@ -590,12 +699,14 @@ class ZeusAPIManager:
                 
                 try:
                     response = self.session.get(url, headers=headers, params=params, timeout=30)
+                    response_time = time.time() - start_time
                     
                     if response.status_code == 200:
                         response_data = response.json()
                         self.api_stats['cielo_token_pnl']['success'] += 1
+                        self._record_api_call('cielo_token_pnl', 5, response_time, True)
                         
-                        logger.info(f"✅ Cielo Token PnL API success with {auth_method}!")
+                        logger.info(f"✅ Cielo Token PnL API success with {auth_method} in {response_time:.2f}s!")
                         
                         # ENHANCED: Extract tokens with better field analysis
                         tokens_data = self._extract_tokens_with_enhanced_analysis(response_data)
@@ -616,16 +727,26 @@ class ZeusAPIManager:
                             'tokens_count': len(tokens_data),
                             'credit_cost': 5,
                             'structure_used': 'data.items[]',
-                            'extraction_method': 'enhanced_exit_analysis'
+                            'extraction_method': 'enhanced_exit_analysis',
+                            'performance': {
+                                'response_time': response_time,
+                                'cost': 5
+                            }
                         }
                     
                     elif response.status_code == 404:
+                        response_time = time.time() - start_time
                         logger.warning(f"⚠️ No token PnL data found for wallet {wallet_address[:8]}...")
+                        self._record_api_call('cielo_token_pnl', 5, response_time, False)
                         return {
                             'success': False,
                             'error': 'No token PnL data found',
                             'error_code': 404,
-                            'source': 'cielo_token_pnl_enhanced'
+                            'source': 'cielo_token_pnl_enhanced',
+                            'performance': {
+                                'response_time': response_time,
+                                'cost': 5
+                            }
                         }
                     
                     elif response.status_code in [401, 403]:
@@ -641,24 +762,36 @@ class ZeusAPIManager:
                     continue
             
             # All auth methods failed
+            response_time = time.time() - start_time
             error_msg = f"All Cielo Token PnL authentication methods failed"
             logger.error(f"❌ {error_msg}")
             self.api_stats['cielo_token_pnl']['errors'] += 1
+            self._record_api_call('cielo_token_pnl', 5, response_time, False)
             
             return {
                 'success': False,
                 'error': error_msg,
-                'source': 'cielo_token_pnl_enhanced'
+                'source': 'cielo_token_pnl_enhanced',
+                'performance': {
+                    'response_time': response_time,
+                    'cost': 5
+                }
             }
             
         except Exception as e:
+            response_time = time.time() - start_time
             error_msg = f"Cielo Token PnL API error: {str(e)}"
             logger.error(f"❌ {error_msg}")
             self.api_stats['cielo_token_pnl']['errors'] += 1
+            self._record_api_call('cielo_token_pnl', 5, response_time, False)
             return {
                 'success': False,
                 'error': error_msg,
-                'source': 'cielo_token_pnl_enhanced'
+                'source': 'cielo_token_pnl_enhanced',
+                'performance': {
+                    'response_time': response_time,
+                    'cost': 5
+                }
             }
     
     def _extract_tokens_with_enhanced_analysis(self, response_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -904,7 +1037,8 @@ class ZeusAPIManager:
             'token_analysis_ready': False,
             'timestamp_accuracy': 'none',
             'field_extraction_method': 'safe_direct_mapping',
-            'exit_analysis_enhanced': True
+            'exit_analysis_enhanced': True,
+            'performance_monitoring': self.enable_monitoring
         }
         
         # Check REQUIRED APIs
@@ -947,7 +1081,7 @@ class ZeusAPIManager:
         return status
     
     def get_performance_stats(self) -> Dict[str, Any]:
-        """Get API performance statistics."""
+        """Get API performance statistics with enhanced monitoring data."""
         perf_stats = {}
         
         for api_name, stats in self.api_stats.items():
@@ -965,14 +1099,30 @@ class ZeusAPIManager:
                 'status': 'good' if success_rate >= 80 else 'degraded' if success_rate >= 50 else 'poor'
             }
         
+        # Add performance monitoring info if available
+        if self.enable_monitoring and self.performance_monitor:
+            monitor_report = self.performance_monitor.get_performance_report()
+            perf_stats['session_summary'] = {
+                'total_cost': monitor_report.get('total_cost', 0),
+                'avg_response_time': monitor_report.get('avg_response_time', 0),
+                'session_duration': monitor_report.get('session_duration', 0),
+                'monitoring_enabled': True
+            }
+        else:
+            perf_stats['session_summary'] = {
+                'monitoring_enabled': False
+            }
+        
         return perf_stats
     
     def test_helius_connection(self, test_wallet: str = "DhDiCRqc4BAojxUDzBonf7KAujejtpUryxDsuqPqGKA9") -> Dict[str, Any]:
-        """Test Helius API connection with ENHANCED transaction analysis."""
+        """Test Helius API connection with ENHANCED transaction analysis and performance monitoring."""
         try:
             logger.info(f"🧪 Testing Helius API connection with ENHANCED analysis: {test_wallet[:8]}...")
             
+            start_time = time.time()
             result = self.get_last_transaction_timestamp(test_wallet)
+            test_duration = time.time() - start_time
             
             if result.get('success'):
                 logger.info("✅ Helius API connection test successful!")
@@ -983,7 +1133,11 @@ class ZeusAPIManager:
                     'days_since_last': result.get('days_since_last_trade', 'unknown'),
                     'transaction_count': result.get('transaction_count', 0),
                     'trading_analysis': result.get('trading_analysis', {}),
-                    'enhanced_features': True
+                    'enhanced_features': True,
+                    'performance': {
+                        'test_duration': test_duration,
+                        'response_time': result.get('performance', {}).get('response_time', 0)
+                    }
                 }
             else:
                 logger.error(f"❌ Helius API connection test failed: {result.get('error', 'Unknown error')}")
@@ -991,7 +1145,11 @@ class ZeusAPIManager:
                     'connection_test': 'failed',
                     'api_working': False,
                     'error': result.get('error', 'Unknown error'),
-                    'enhanced_features': False
+                    'enhanced_features': False,
+                    'performance': {
+                        'test_duration': test_duration,
+                        'response_time': result.get('performance', {}).get('response_time', 0)
+                    }
                 }
                 
         except Exception as e:
@@ -1004,9 +1162,11 @@ class ZeusAPIManager:
             }
     
     def test_cielo_api_connection(self, test_wallet: str = "DhDiCRqc4BAojxUDzBonf7KAujejtpUryxDsuqPqGKA9") -> Dict[str, Any]:
-        """Test Cielo API connection with ENHANCED Token PnL analysis."""
+        """Test Cielo API connection with ENHANCED Token PnL analysis and performance monitoring."""
         try:
             logger.info(f"🧪 Testing Cielo API connection with ENHANCED features: {test_wallet[:8]}...")
+            
+            start_time = time.time()
             
             # Test Trading Stats (30 credits)
             trading_stats_result = self.get_wallet_trading_stats(test_wallet)
@@ -1014,8 +1174,22 @@ class ZeusAPIManager:
             # Test Token PnL with ENHANCED analysis (5 credits)
             token_pnl_result = self.get_token_pnl(test_wallet, limit=2)
             
+            test_duration = time.time() - start_time
+            
             if trading_stats_result.get('success') or token_pnl_result.get('success'):
                 logger.info("✅ Cielo API connection test successful!")
+                
+                # Calculate total cost and response times
+                total_cost = 0
+                total_response_time = 0
+                
+                if trading_stats_result.get('success'):
+                    total_cost += trading_stats_result.get('performance', {}).get('cost', 30)
+                    total_response_time += trading_stats_result.get('performance', {}).get('response_time', 0)
+                
+                if token_pnl_result.get('success'):
+                    total_cost += token_pnl_result.get('performance', {}).get('cost', 5)
+                    total_response_time += token_pnl_result.get('performance', {}).get('response_time', 0)
                 
                 return {
                     'connection_test': 'success',
@@ -1028,7 +1202,13 @@ class ZeusAPIManager:
                     'auth_method': trading_stats_result.get('auth_method_used', 'unknown'),
                     'field_extraction_method': 'safe_direct_mapping',
                     'validation_safe': True,
-                    'enhanced_exit_analysis': True
+                    'enhanced_exit_analysis': True,
+                    'performance': {
+                        'test_duration': test_duration,
+                        'total_cost': total_cost,
+                        'total_response_time': total_response_time,
+                        'avg_response_time': total_response_time / 2 if total_response_time > 0 else 0
+                    }
                 }
             else:
                 logger.error(f"❌ Cielo API connection test failed")
@@ -1037,7 +1217,10 @@ class ZeusAPIManager:
                     'api_working': False,
                     'trading_stats_error': trading_stats_result.get('error', 'Unknown error'),
                     'token_pnl_error': token_pnl_result.get('error', 'Unknown error'),
-                    'enhanced_exit_analysis': False
+                    'enhanced_exit_analysis': False,
+                    'performance': {
+                        'test_duration': test_duration
+                    }
                 }
                 
         except Exception as e:
@@ -1060,4 +1243,6 @@ class ZeusAPIManager:
             apis.append("Birdeye✅")
         apis.append("RPC✅")
         
-        return f"ZeusAPIManager({', '.join(apis)}, ENHANCED Exit Analysis, Token PnL: data.items[])"
+        monitoring_status = "📈Monitor✅" if self.enable_monitoring else "📈Monitor❌"
+        
+        return f"ZeusAPIManager({', '.join(apis)}, ENHANCED Exit Analysis, Token PnL: data.items[], {monitoring_status})"
